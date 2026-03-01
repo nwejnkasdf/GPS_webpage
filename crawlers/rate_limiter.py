@@ -24,5 +24,5 @@ class RateLimiter:
 
 
 # Global singleton limiters
-boj_limiter = RateLimiter(rate=1, period=2.5)     # 1 req per 2.5s
+boj_limiter = RateLimiter(rate=1, period=1.0)     # 1 req per 1.0s
 solved_limiter = RateLimiter(rate=3, period=1.0)  # 3 req per 1s

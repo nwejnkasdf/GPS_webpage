@@ -162,11 +162,26 @@ async def check_week_attendance(
     total = len(members)
     task_store[task_id].update({"status": "running", "progress": 0, "total": total, "errors": []})
 
-    for i, member in enumerate(members):
+    done = 0
+
+    async def process_member(member: Member):
+        nonlocal done
         sg, st, errs = await check_member_week(member, week, problems, deadline)
         is_present = _compute_is_present(week, sg, st)
         _upsert_attendance(db, member.id, week.id, is_present, sg, st)
-        task_store[task_id]["errors"].extend(errs)
-        task_store[task_id]["progress"] = i + 1
+        done += 1
+        task_store[task_id]["progress"] = done
+        return errs
+
+    results = await asyncio.gather(
+        *[process_member(m) for m in members],
+        return_exceptions=True,
+    )
+
+    for result in results:
+        if isinstance(result, Exception):
+            task_store[task_id]["errors"].append(str(result))
+        elif isinstance(result, list):
+            task_store[task_id]["errors"].extend(result)
 
     task_store[task_id]["status"] = "done"
