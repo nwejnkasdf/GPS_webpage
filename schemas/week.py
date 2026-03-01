@@ -41,3 +41,8 @@ class WeekRead(BaseModel):
     problems: list[WeekProblemRead] = []
 
     model_config = {"from_attributes": True}
+
+
+class WeekImportRequest(BaseModel):
+    source_session_id: int
+    week_ids: list[int] | None = None  # None = 전부 가져오기

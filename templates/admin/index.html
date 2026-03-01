@@ -13,6 +13,47 @@
   <div class="col-12 text-muted">불러오는 중...</div>
 </div>
 
+<!-- Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">세션 수정</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">세션 이름</label>
+          <input type="text" class="form-control" id="e-name" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">세션 유형</label>
+          <select class="form-select" id="e-type" required>
+            <option value="겨울방학">겨울방학</option>
+            <option value="1학기">1학기</option>
+            <option value="여름방학">여름방학</option>
+            <option value="2학기">2학기</option>
+          </select>
+        </div>
+        <div class="row">
+          <div class="col mb-3">
+            <label class="form-label">시작일</label>
+            <input type="date" class="form-control" id="e-start" required>
+          </div>
+          <div class="col mb-3">
+            <label class="form-label">종료일</label>
+            <input type="date" class="form-control" id="e-end" required>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button type="button" class="btn btn-primary" onclick="saveSession()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Create Modal -->
 <div class="modal fade" id="createModal" tabindex="-1">
   <div class="modal-dialog">
@@ -60,6 +101,7 @@
 {% block extra_js %}
 <script>
 const TYPE_COLORS = { "겨울방학":"primary","1학기":"success","여름방학":"warning","2학기":"danger" };
+let editingSessionId = null;
 
 async function loadSessions() {
   const res = await fetch('/api/v1/sessions');
@@ -79,11 +121,41 @@ async function loadSessions() {
         <div class="card-footer d-flex gap-2">
           <a href="/admin/sessions/${s.id}" class="btn btn-sm btn-outline-primary flex-grow-1">관리</a>
           <a href="/admin/sessions/${s.id}/attendance" class="btn btn-sm btn-outline-success flex-grow-1">출석</a>
+          <button class="btn btn-sm btn-outline-secondary" onclick="editSession(${s.id}, '${s.name}', '${s.type}', '${s.start_date}', '${s.end_date}')"><i class="bi bi-pencil"></i></button>
           <button class="btn btn-sm btn-outline-danger" onclick="deleteSession(${s.id})"><i class="bi bi-trash"></i></button>
         </div>
       </div>
     </div>`;
   }).join('');
+}
+
+function editSession(id, name, type, start, end) {
+  editingSessionId = id;
+  document.getElementById('e-name').value = name;
+  document.getElementById('e-type').value = type;
+  document.getElementById('e-start').value = start;
+  document.getElementById('e-end').value = end;
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+async function saveSession() {
+  const body = {
+    name: document.getElementById('e-name').value,
+    type: document.getElementById('e-type').value,
+    start_date: document.getElementById('e-start').value,
+    end_date: document.getElementById('e-end').value,
+  };
+  const res = await fetch(`/api/v1/sessions/${editingSessionId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+    loadSessions();
+  } else {
+    alert('수정 실패: ' + (await res.json()).detail);
+  }
 }
 
 async function createSession() {

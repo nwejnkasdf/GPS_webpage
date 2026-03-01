@@ -7,7 +7,7 @@ from database import get_db
 from models.session import Session as SessionModel
 from models.week import Week
 from models.week_problem import WeekProblem
-from schemas.week import WeekCreate, WeekProblemRead, WeekRead, WeekUpdate
+from schemas.week import WeekCreate, WeekImportRequest, WeekProblemRead, WeekRead, WeekUpdate
 
 router = APIRouter()
 
@@ -169,6 +169,48 @@ async def refresh_difficulty(week_id: int, db: Session = Depends(get_db)):
         p.difficulty = await fetch_problem_difficulty(p.problem_number)
     db.commit()
     return [_enrich_problem(p) for p in problems]
+
+
+@router.post("/sessions/{session_id}/weeks/import", response_model=list[WeekRead], dependencies=[Depends(require_admin_api)])
+def import_weeks(session_id: int, data: WeekImportRequest, db: Session = Depends(get_db)):
+    """다른 세션의 주차(+문제)를 현재 세션으로 복사합니다."""
+    _get_session_or_404(session_id, db)
+    _get_session_or_404(data.source_session_id, db)
+
+    query = db.query(Week).filter(Week.session_id == data.source_session_id)
+    if data.week_ids:
+        query = query.filter(Week.id.in_(data.week_ids))
+    source_weeks = query.order_by(Week.week_number).all()
+
+    if not source_weeks:
+        raise HTTPException(status_code=404, detail="가져올 주차가 없습니다.")
+
+    new_weeks = []
+    for sw in source_weeks:
+        new_week = Week(
+            session_id=session_id,
+            week_number=sw.week_number,
+            end_date=sw.end_date,
+            min_gold_problems=sw.min_gold_problems,
+            min_total_problems=sw.min_total_problems,
+            criteria_mode=sw.criteria_mode,
+        )
+        db.add(new_week)
+        db.flush()  # new_week.id 확보
+
+        for p in sw.problems:
+            db.add(WeekProblem(
+                week_id=new_week.id,
+                problem_number=p.problem_number,
+                difficulty=p.difficulty,
+            ))
+
+        new_weeks.append(new_week)
+
+    db.commit()
+    for w in new_weeks:
+        db.refresh(w)
+    return [_enrich_week(w) for w in new_weeks]
 
 
 @router.delete("/problems/{problem_id}", status_code=204, dependencies=[Depends(require_admin_api)])
