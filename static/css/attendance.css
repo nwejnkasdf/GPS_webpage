@@ -1,0 +1,14 @@
+.attendance-table th,
+.attendance-table td {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.attendance-table thead th {
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.attendance-table td[title] {
+  cursor: help;
+}

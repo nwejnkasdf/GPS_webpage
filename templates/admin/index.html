@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}관리자 대시보드{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>관리자 - 세션 관리</h2>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
+    <i class="bi bi-plus-circle me-1"></i>세션 추가
+  </button>
+</div>
+
+<div id="session-list" class="row g-3">
+  <div class="col-12 text-muted">불러오는 중...</div>
+</div>
+
+<!-- Create Modal -->
+<div class="modal fade" id="createModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">새 세션 추가</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="create-form">
+          <div class="mb-3">
+            <label class="form-label">세션 이름</label>
+            <input type="text" class="form-control" id="f-name" placeholder="예: 2025 겨울방학" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">세션 유형</label>
+            <select class="form-select" id="f-type" required>
+              <option value="겨울방학">겨울방학</option>
+              <option value="1학기">1학기</option>
+              <option value="여름방학">여름방학</option>
+              <option value="2학기">2학기</option>
+            </select>
+          </div>
+          <div class="row">
+            <div class="col mb-3">
+              <label class="form-label">시작일</label>
+              <input type="date" class="form-control" id="f-start" required>
+            </div>
+            <div class="col mb-3">
+              <label class="form-label">종료일</label>
+              <input type="date" class="form-control" id="f-end" required>
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button type="button" class="btn btn-primary" onclick="createSession()">생성</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const TYPE_COLORS = { "겨울방학":"primary","1학기":"success","여름방학":"warning","2학기":"danger" };
+
+async function loadSessions() {
+  const res = await fetch('/api/v1/sessions');
+  const sessions = await res.json();
+  const el = document.getElementById('session-list');
+  if (!sessions.length) { el.innerHTML = '<div class="col-12 text-muted">세션이 없습니다.</div>'; return; }
+  el.innerHTML = sessions.map(s => {
+    const c = TYPE_COLORS[s.type] || 'secondary';
+    return `
+    <div class="col-md-4">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <span class="badge bg-${c} mb-2">${s.type}</span>
+          <h5>${s.name}</h5>
+          <p class="text-muted small">${s.start_date} ~ ${s.end_date}<br>멤버 ${s.member_count}명 · ${s.week_count}주차</p>
+        </div>
+        <div class="card-footer d-flex gap-2">
+          <a href="/admin/sessions/${s.id}" class="btn btn-sm btn-outline-primary flex-grow-1">관리</a>
+          <a href="/admin/sessions/${s.id}/attendance" class="btn btn-sm btn-outline-success flex-grow-1">출석</a>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteSession(${s.id})"><i class="bi bi-trash"></i></button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function createSession() {
+  const body = {
+    name: document.getElementById('f-name').value,
+    type: document.getElementById('f-type').value,
+    start_date: document.getElementById('f-start').value,
+    end_date: document.getElementById('f-end').value,
+  };
+  const res = await fetch('/api/v1/sessions', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (res.ok) { bootstrap.Modal.getInstance(document.getElementById('createModal')).hide(); loadSessions(); }
+  else { alert('생성 실패: ' + (await res.json()).detail); }
+}
+
+async function deleteSession(id) {
+  if (!confirm('세션과 모든 데이터를 삭제합니다. 계속하시겠습니까?')) return;
+  await fetch(`/api/v1/sessions/${id}`, { method:'DELETE' });
+  loadSessions();
+}
+
+loadSessions();
+</script>
+{% endblock %}

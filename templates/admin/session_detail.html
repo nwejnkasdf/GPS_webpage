@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}세션 관리{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb"><ol class="breadcrumb">
+  <li class="breadcrumb-item"><a href="/admin">관리자</a></li>
+  <li class="breadcrumb-item active" id="bc-name">세션</li>
+</ol></nav>
+
+<div class="row g-4">
+  <!-- 멤버 관리 -->
+  <div class="col-md-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>멤버 관리</strong>
+        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addMemberModal">
+          <i class="bi bi-person-plus"></i> 추가
+        </button>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0" id="member-table">
+          <thead><tr><th>이름</th><th>BOJ ID</th><th></th></tr></thead>
+          <tbody id="member-tbody"><tr><td colspan="3" class="text-muted p-3">불러오는 중...</td></tr></tbody>
+        </table>
+      </div>
+      <div class="card-footer">
+        <button class="btn btn-sm btn-outline-secondary w-100" data-bs-toggle="modal" data-bs-target="#bulkModal">
+          일괄 등록 (이름,BOJ ID)
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 주차 관리 -->
+  <div class="col-md-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>주차 관리</strong>
+        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addWeekModal">
+          <i class="bi bi-plus-circle"></i> 주차 추가
+        </button>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>주차</th><th>마감일</th><th>조건</th><th></th></tr></thead>
+          <tbody id="week-tbody"><tr><td colspan="4" class="text-muted p-3">불러오는 중...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Member Modal -->
+<div class="modal fade" id="addMemberModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">멤버 추가</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-3"><label class="form-label">이름</label><input type="text" class="form-control" id="m-name" required></div>
+        <div class="mb-3"><label class="form-label">백준 ID</label><input type="text" class="form-control" id="m-handle" required></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary" onclick="addMember()">추가</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Modal -->
+<div class="modal fade" id="bulkModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">일괄 등록</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <p class="text-muted small">한 줄에 하나씩 <code>이름,BOJ_ID</code> 형식으로 입력하세요.</p>
+        <textarea class="form-control font-monospace" id="bulk-text" rows="8" placeholder="홍길동,gildong123
+이몽룡,mongryong456"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary" onclick="bulkAdd()">등록</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Add Week Modal -->
+<div class="modal fade" id="addWeekModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">주차 추가</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="row mb-3">
+          <div class="col"><label class="form-label">주차 번호</label><input type="number" class="form-control" id="w-num" min="1" value="1"></div>
+          <div class="col"><label class="form-label">마감일</label><input type="date" class="form-control" id="w-end"></div>
+        </div>
+        <div class="row mb-3">
+          <div class="col"><label class="form-label">골드 이상 최소</label><input type="number" class="form-control" id="w-gold" min="0" value="0"></div>
+          <div class="col"><label class="form-label">총 최소 풀이 수</label><input type="number" class="form-control" id="w-total" min="0" value="1"></div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">조건 관계</label>
+          <select class="form-select" id="w-mode">
+            <option value="AND">AND (둘 다 만족)</option>
+            <option value="OR">OR (하나만 만족)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary" onclick="addWeek()">추가</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const SESSION_ID = {{ session_id }};
+
+async function loadAll() {
+  const [sRes, mRes, wRes] = await Promise.all([
+    fetch(`/api/v1/sessions/${SESSION_ID}`),
+    fetch(`/api/v1/sessions/${SESSION_ID}/members`),
+    fetch(`/api/v1/sessions/${SESSION_ID}/weeks`),
+  ]);
+  const s = await sRes.json();
+  document.getElementById('bc-name').textContent = s.name;
+
+  const members = await mRes.json();
+  document.getElementById('member-tbody').innerHTML = members.map(m =>
+    `<tr>
+      <td>${m.name}</td>
+      <td><a href="https://www.acmicpc.net/user/${m.baekjoon_handle}" target="_blank">${m.baekjoon_handle}</a></td>
+      <td><button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="deleteMember(${m.id})"><i class="bi bi-trash"></i></button></td>
+    </tr>`
+  ).join('') || '<tr><td colspan="3" class="text-muted p-3">멤버 없음</td></tr>';
+
+  const weeks = await wRes.json();
+  document.getElementById('week-tbody').innerHTML = weeks.map(w =>
+    `<tr>
+      <td>Week ${w.week_number}</td>
+      <td>${w.end_date}</td>
+      <td class="text-muted small">골드≥${w.min_gold_problems} ${w.criteria_mode} 총≥${w.min_total_problems}</td>
+      <td class="d-flex gap-1">
+        <a href="/admin/weeks/${w.id}" class="btn btn-sm btn-outline-primary py-0">문제</a>
+        <button class="btn btn-sm btn-outline-danger py-0" onclick="deleteWeek(${w.id})"><i class="bi bi-trash"></i></button>
+      </td>
+    </tr>`
+  ).join('') || '<tr><td colspan="4" class="text-muted p-3">주차 없음</td></tr>';
+}
+
+async function addMember() {
+  const body = { name: document.getElementById('m-name').value, baekjoon_handle: document.getElementById('m-handle').value };
+  const res = await fetch(`/api/v1/sessions/${SESSION_ID}/members`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (res.ok) { bootstrap.Modal.getInstance(document.getElementById('addMemberModal')).hide(); loadAll(); }
+  else alert('추가 실패');
+}
+
+async function bulkAdd() {
+  const lines = document.getElementById('bulk-text').value.trim().split('\n').filter(l => l.trim());
+  const data = lines.map(l => { const [name, handle] = l.split(',').map(x => x.trim()); return {name, baekjoon_handle: handle}; });
+  await fetch(`/api/v1/sessions/${SESSION_ID}/members/bulk`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+  bootstrap.Modal.getInstance(document.getElementById('bulkModal')).hide();
+  loadAll();
+}
+
+async function deleteMember(id) {
+  if (!confirm('멤버를 삭제하시겠습니까?')) return;
+  await fetch(`/api/v1/members/${id}`, { method:'DELETE' });
+  loadAll();
+}
+
+async function addWeek() {
+  const body = {
+    week_number: parseInt(document.getElementById('w-num').value),
+    end_date: document.getElementById('w-end').value,
+    min_gold_problems: parseInt(document.getElementById('w-gold').value),
+    min_total_problems: parseInt(document.getElementById('w-total').value),
+    criteria_mode: document.getElementById('w-mode').value,
+  };
+  const res = await fetch(`/api/v1/sessions/${SESSION_ID}/weeks`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+  if (res.ok) { bootstrap.Modal.getInstance(document.getElementById('addWeekModal')).hide(); loadAll(); }
+  else alert('추가 실패');
+}
+
+async function deleteWeek(id) {
+  if (!confirm('주차를 삭제하시겠습니까?')) return;
+  await fetch(`/api/v1/weeks/${id}`, { method:'DELETE' });
+  loadAll();
+}
+
+loadAll();
+</script>
+{% endblock %}

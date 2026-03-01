@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}문제 관리{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/css/attendance.css">{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb"><ol class="breadcrumb">
+  <li class="breadcrumb-item"><a href="/admin">관리자</a></li>
+  <li class="breadcrumb-item"><a href="#" id="bc-session">세션</a></li>
+  <li class="breadcrumb-item active" id="bc-week">주차</li>
+</ol></nav>
+
+<div class="card shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <strong id="week-title">문제 관리</strong>
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#bulkProblemModal">
+        <i class="bi bi-list-ol me-1"></i>일괄 등록
+      </button>
+      <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addProblemModal">
+        <i class="bi bi-plus-circle me-1"></i>문제 추가
+      </button>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead><tr><th>문제 번호</th><th>난이도</th><th>링크</th><th></th></tr></thead>
+      <tbody id="problem-tbody"><tr><td colspan="4" class="text-muted p-3">불러오는 중...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card-footer">
+    <button class="btn btn-sm btn-outline-secondary" onclick="refreshDifficulty()">
+      <i class="bi bi-arrow-clockwise me-1"></i>난이도 새로고침
+    </button>
+  </div>
+</div>
+
+<!-- Add Problem Modal -->
+<div class="modal fade" id="addProblemModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">문제 추가</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label">백준 문제 번호</label>
+        <input type="number" class="form-control" id="p-num" min="1000" placeholder="예: 1000">
+        <div class="form-text">추가 시 solved.ac에서 난이도를 자동으로 가져옵니다.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button class="btn btn-primary" id="add-btn" onclick="addProblem()">추가</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Bulk Problem Modal -->
+<div class="modal fade" id="bulkProblemModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">문제 일괄 등록</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small">문제 번호를 한 줄에 하나씩, 또는 공백/쉼표로 구분해서 입력하세요.</p>
+        <textarea class="form-control font-monospace" id="bulk-nums" rows="6"
+          placeholder="1000&#10;1001&#10;1002&#10;또는: 1000 1001 1002"></textarea>
+        <div id="bulk-result" class="mt-3 d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+        <button class="btn btn-primary" id="bulk-btn" onclick="bulkAddProblems()">
+          <i class="bi bi-list-ol me-1"></i>일괄 등록
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const WEEK_ID = {{ week_id }};
+let SESSION_ID = null;
+
+const TIER_COLORS = {
+  bronze:'#AD5600', silver:'#435F7A', gold:'#EC9A00',
+  platinum:'#27E2A4', diamond:'#00B4FC', ruby:'#FF0062', unknown:'#9E9E9E',
+};
+
+function diffBadge(tier, label) {
+  const color = TIER_COLORS[tier] || '#9E9E9E';
+  return `<span class="badge" style="background:${color}">${label}</span>`;
+}
+
+async function load() {
+  const wRes = await fetch(`/api/v1/weeks/${WEEK_ID}`);
+  const week = await wRes.json();
+  SESSION_ID = week.session_id;
+  document.getElementById('bc-session').href = `/admin/sessions/${SESSION_ID}`;
+  document.getElementById('bc-week').textContent = `Week ${week.week_number}`;
+  document.getElementById('week-title').textContent =
+    `Week ${week.week_number} 문제 관리 (마감: ${week.end_date})`;
+  renderProblems(week.problems);
+}
+
+function renderProblems(problems) {
+  const tbody = document.getElementById('problem-tbody');
+  if (!problems.length) { tbody.innerHTML = '<tr><td colspan="4" class="text-muted p-3">문제 없음</td></tr>'; return; }
+  tbody.innerHTML = problems.map(p =>
+    `<tr>
+      <td><strong>${p.problem_number}</strong></td>
+      <td>${diffBadge(p.difficulty_tier, p.difficulty_label)}</td>
+      <td><a href="https://www.acmicpc.net/problem/${p.problem_number}" target="_blank" class="text-decoration-none">
+        <i class="bi bi-box-arrow-up-right"></i>
+      </a></td>
+      <td><button class="btn btn-sm btn-outline-danger py-0 px-1" onclick="deleteProblem(${p.id})"><i class="bi bi-trash"></i></button></td>
+    </tr>`
+  ).join('');
+}
+
+async function addProblem() {
+  const num = parseInt(document.getElementById('p-num').value);
+  if (!num) return alert('문제 번호를 입력하세요.');
+  const btn = document.getElementById('add-btn');
+  btn.disabled = true; btn.textContent = '조회 중...';
+  try {
+    const res = await fetch(`/api/v1/weeks/${WEEK_ID}/problems?problem_number=${num}`, { method:'POST' });
+    if (res.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('addProblemModal')).hide();
+      load();
+    } else {
+      const err = await res.json();
+      alert(err.detail || '추가 실패');
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = '추가';
+  }
+}
+
+async function deleteProblem(id) {
+  if (!confirm('문제를 삭제하시겠습니까?')) return;
+  await fetch(`/api/v1/problems/${id}`, { method:'DELETE' });
+  load();
+}
+
+async function bulkAddProblems() {
+  const raw = document.getElementById('bulk-nums').value;
+  const nums = raw.split(/[\s,]+/).map(s => parseInt(s.trim())).filter(n => !isNaN(n) && n > 0);
+  if (!nums.length) return alert('문제 번호를 입력하세요.');
+
+  const btn = document.getElementById('bulk-btn');
+  const resultEl = document.getElementById('bulk-result');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>등록 중...';
+  resultEl.className = 'mt-3 d-none';
+
+  try {
+    const res = await fetch(`/api/v1/weeks/${WEEK_ID}/problems/bulk`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(nums),
+    });
+    const data = await res.json();
+
+    let html = '';
+    if (data.added.length) {
+      html += `<div class="text-success"><i class="bi bi-check-circle me-1"></i>추가됨 (${data.added.length}개): ${data.added.join(', ')}</div>`;
+    }
+    if (data.skipped.length) {
+      html += `<div class="text-warning"><i class="bi bi-skip-forward me-1"></i>중복 스킵 (${data.skipped.length}개): ${data.skipped.join(', ')}</div>`;
+    }
+    resultEl.innerHTML = html;
+    resultEl.className = 'mt-3';
+
+    renderProblems(data.problems);
+    document.getElementById('bulk-nums').value = '';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-list-ol me-1"></i>일괄 등록';
+  }
+}
+
+async function refreshDifficulty() {
+  const btn = event.target;
+  btn.disabled = true; btn.textContent = '새로고침 중...';
+  try {
+    const res = await fetch(`/api/v1/weeks/${WEEK_ID}/problems/refresh-difficulty`, { method:'POST' });
+    const problems = await res.json();
+    renderProblems(problems);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>난이도 새로고침';
+  }
+}
+
+load();
+</script>
+{% endblock %}

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}출석 관리{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/css/attendance.css">{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb"><ol class="breadcrumb">
+  <li class="breadcrumb-item"><a href="/admin">관리자</a></li>
+  <li class="breadcrumb-item"><a href="/admin/sessions/{{ session_id }}" id="bc-session">세션</a></li>
+  <li class="breadcrumb-item active">출석 관리</li>
+</ol></nav>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3 id="session-title">출석 관리</h3>
+  <div class="d-flex gap-2">
+    <button class="btn btn-success" onclick="triggerCheck()">
+      <i class="bi bi-play-circle me-1"></i>전체 출석 체크
+    </button>
+    <a id="export-btn" href="/api/v1/sessions/{{ session_id }}/attendance/export" class="btn btn-outline-secondary">
+      <i class="bi bi-download me-1"></i>CSV
+    </a>
+  </div>
+</div>
+
+<!-- Progress -->
+<div id="progress-section" class="d-none mb-3">
+  <div class="d-flex justify-content-between mb-1">
+    <span class="small text-muted">출석 체크 진행 중...</span>
+    <span class="small" id="progress-text">0 / 0</span>
+  </div>
+  <div class="progress">
+    <div class="progress-bar progress-bar-striped progress-bar-animated" id="progress-bar" style="width:0%"></div>
+  </div>
+</div>
+
+<!-- Errors -->
+<div id="error-section" class="d-none alert alert-warning">
+  <strong>오류 발생:</strong>
+  <ul id="error-list" class="mb-0 mt-1"></ul>
+</div>
+
+<!-- Attendance Table -->
+<div id="attendance-wrap"><p class="text-muted">불러오는 중...</p></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const SESSION_ID = {{ session_id }};
+let pollInterval = null;
+
+async function loadAttendance() {
+  const res = await fetch(`/api/v1/sessions/${SESSION_ID}/attendance`);
+  if (!res.ok) return;
+  const data = await res.json();
+  const wrap = document.getElementById('attendance-wrap');
+
+  if (!data.rows.length) { wrap.innerHTML = '<p class="text-muted">멤버가 없습니다.</p>'; return; }
+
+  const thead = data.weeks.map(w =>
+    `<th class="text-center">
+      Week${w.week_number}<br>
+      <small class="text-muted">${w.end_date}</small><br>
+      <small class="fw-normal" style="font-size:0.65rem">골드≥${w.min_gold_problems} ${w.criteria_mode} 총≥${w.min_total_problems}</small>
+      <br><button class="btn btn-xs btn-outline-secondary mt-1 py-0 px-1" style="font-size:0.65rem" onclick="triggerWeekCheck(${w.id})">재체크</button>
+    </th>`
+  ).join('');
+
+  const tbody = data.rows.map(row => {
+    const totalPresent = data.weeks.filter(w => row.weeks[w.id]?.is_present).length;
+    const cells = data.weeks.map(w => {
+      const cell = row.weeks[w.id];
+      if (!cell) return `<td class="text-center text-muted">-</td>`;
+      const icon = cell.is_present
+        ? `<span class="badge bg-success">O</span>`
+        : `<span class="badge bg-danger">X</span>`;
+      const checked = cell.last_checked ? cell.last_checked.substring(0,16).replace('T',' ') : '미체크';
+      return `<td class="text-center" title="풀이: 골드${cell.solved_gold_count} / 총${cell.solved_total_count}\n체크: ${checked}">${icon}</td>`;
+    }).join('');
+    return `<tr>
+      <td>${row.member_name}</td>
+      <td><a href="https://www.acmicpc.net/user/${row.baekjoon_handle}" target="_blank">${row.baekjoon_handle}</a></td>
+      ${cells}
+      <td class="text-center fw-bold">${totalPresent}/${data.weeks.length}</td>
+    </tr>`;
+  }).join('');
+
+  const totalHeader = `<th class="text-center">총출석</th>`;
+  wrap.innerHTML = `
+    <div class="table-responsive">
+      <table class="table table-bordered table-hover attendance-table">
+        <thead class="table-dark"><tr><th>이름</th><th>BOJ ID</th>${thead}${totalHeader}</tr></thead>
+        <tbody>${tbody}</tbody>
+      </table>
+    </div>`;
+}
+
+async function triggerCheck() {
+  const res = await fetch(`/api/v1/sessions/${SESSION_ID}/check`, { method:'POST' });
+  const {task_id} = await res.json();
+  startPolling(task_id);
+}
+
+async function triggerWeekCheck(weekId) {
+  const res = await fetch(`/api/v1/weeks/${weekId}/check`, { method:'POST' });
+  const {task_id} = await res.json();
+  startPolling(task_id);
+}
+
+function startPolling(task_id) {
+  document.getElementById('progress-section').classList.remove('d-none');
+  document.getElementById('error-section').classList.add('d-none');
+  if (pollInterval) clearInterval(pollInterval);
+
+  pollInterval = setInterval(async () => {
+    const res = await fetch(`/api/v1/check/status?task_id=${task_id}`);
+    const status = await res.json();
+    const pct = status.total > 0 ? Math.round(status.progress / status.total * 100) : 0;
+    document.getElementById('progress-bar').style.width = pct + '%';
+    document.getElementById('progress-text').textContent = `${status.progress} / ${status.total}`;
+
+    if (status.status === 'done' || status.status === 'error') {
+      clearInterval(pollInterval); pollInterval = null;
+      document.getElementById('progress-section').classList.add('d-none');
+      if (status.errors.length) {
+        document.getElementById('error-section').classList.remove('d-none');
+        document.getElementById('error-list').innerHTML = status.errors.map(e => `<li>${e}</li>`).join('');
+      }
+      loadAttendance();
+    }
+  }, 2000);
+}
+
+loadAttendance();
+</script>
+{% endblock %}
