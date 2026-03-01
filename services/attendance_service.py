@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, time
 
 from sqlalchemy.orm import Session as DBSession
@@ -94,7 +93,7 @@ async def check_session_attendance(
 ) -> None:
     """
     Full attendance check for a session. Updates task_store for progress polling.
-    Weeks: sequential. Members per week: concurrent.
+    Weeks: sequential. Members per week: sequential (BOJ 403 방지).
     """
     session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
     if not session:
@@ -119,22 +118,11 @@ async def check_session_attendance(
             task_store[task_id]["progress"] = done
             continue
 
-        async def process_member(member: Member):
+        for member in members:
             sg, st, errs = await check_member_week(member, week, problems, deadline)
             is_present = _compute_is_present(week, sg, st)
             _upsert_attendance(db, member.id, week.id, is_present, sg, st)
-            return errs
-
-        results = await asyncio.gather(
-            *[process_member(m) for m in members],
-            return_exceptions=True,
-        )
-
-        for result in results:
-            if isinstance(result, Exception):
-                task_store[task_id]["errors"].append(str(result))
-            elif isinstance(result, list):
-                task_store[task_id]["errors"].extend(result)
+            task_store[task_id]["errors"].extend(errs)
             done += 1
             task_store[task_id]["progress"] = done
 
@@ -147,7 +135,7 @@ async def check_week_attendance(
     task_store: dict,
     task_id: str,
 ) -> None:
-    """Single-week attendance check."""
+    """Single-week attendance check. Members: sequential (BOJ 403 방지)."""
     week = db.query(Week).filter(Week.id == week_id).first()
     if not week:
         task_store[task_id] = {"status": "error", "progress": 0, "total": 0,
@@ -162,26 +150,11 @@ async def check_week_attendance(
     total = len(members)
     task_store[task_id].update({"status": "running", "progress": 0, "total": total, "errors": []})
 
-    done = 0
-
-    async def process_member(member: Member):
-        nonlocal done
+    for i, member in enumerate(members):
         sg, st, errs = await check_member_week(member, week, problems, deadline)
         is_present = _compute_is_present(week, sg, st)
         _upsert_attendance(db, member.id, week.id, is_present, sg, st)
-        done += 1
-        task_store[task_id]["progress"] = done
-        return errs
-
-    results = await asyncio.gather(
-        *[process_member(m) for m in members],
-        return_exceptions=True,
-    )
-
-    for result in results:
-        if isinstance(result, Exception):
-            task_store[task_id]["errors"].append(str(result))
-        elif isinstance(result, list):
-            task_store[task_id]["errors"].extend(result)
+        task_store[task_id]["errors"].extend(errs)
+        task_store[task_id]["progress"] = i + 1
 
     task_store[task_id]["status"] = "done"
