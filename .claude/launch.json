@@ -2,11 +2,11 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "boj-attendance-web",
+      "name": "GPS_webpage",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "uvicorn", "main:app", "--reload", "--port", "8001"],
-      "cwd": "C:\\Users\\gywnd\\.vscode\\vscode_code_storage\\Claude_code\\GPS_helper_web",
-      "port": 8001
+      "runtimeArgs": ["-m", "uvicorn", "main:app", "--reload", "--port", "8002"],
+      "cwd": ".",
+      "port": 8002
     }
   ]
 }

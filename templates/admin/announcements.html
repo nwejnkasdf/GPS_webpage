@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}공지/일정 관리 — GPS 동아리{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/admin_club.css">
+{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/admin">관리자</a></li>
+    <li class="breadcrumb-item active">공지/일정 관리</li>
+  </ol>
+</nav>
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>공지/일정 관리</h2>
+  <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
+    <i class="bi bi-plus-circle me-1"></i>공지 추가
+  </button>
+</div>
+
+<div id="list-alert" class="alert d-none mb-3"></div>
+<div id="announcement-list">
+  <div class="text-muted">불러오는 중...</div>
+</div>
+
+<!-- 추가 모달 -->
+<div class="modal fade" id="createModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">공지 추가</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">제목 <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="c-title" placeholder="공지 제목">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">내용</label>
+          <textarea class="form-control" id="c-body" rows="5" placeholder="공지 내용"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">일정 날짜 (선택)</label>
+          <input type="date" class="form-control" id="c-date">
+          <div class="form-text">이벤트/일정이 있을 경우 날짜를 입력하세요.</div>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="c-pinned">
+          <label class="form-check-label" for="c-pinned">상단 고정 (중요 공지)</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button type="button" class="btn btn-primary" onclick="createAnnouncement()">추가</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 수정 모달 -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">공지 수정</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="e-id">
+        <div class="mb-3">
+          <label class="form-label">제목 <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="e-title">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">내용</label>
+          <textarea class="form-control" id="e-body" rows="5"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">일정 날짜 (선택)</label>
+          <input type="date" class="form-control" id="e-date">
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="e-pinned">
+          <label class="form-check-label" for="e-pinned">상단 고정</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+        <button type="button" class="btn btn-primary" onclick="saveAnnouncement()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadAnnouncements() {
+  const res = await fetch('/api/v1/announcements');
+  const el = document.getElementById('announcement-list');
+  if (!res.ok) { el.innerHTML = '<div class="text-danger">불러오기 실패</div>'; return; }
+  const items = await res.json();
+  if (!items.length) { el.innerHTML = '<div class="text-muted">등록된 공지가 없습니다.</div>'; return; }
+  el.innerHTML = `
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>제목</th>
+            <th>일정 날짜</th>
+            <th>고정</th>
+            <th>등록일</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(a => `
+            <tr>
+              <td>${a.is_pinned ? '<i class="bi bi-pin-angle-fill text-warning me-1"></i>' : ''}${a.title}</td>
+              <td>${a.event_date || '-'}</td>
+              <td>${a.is_pinned ? '<span class="badge bg-warning text-dark">고정</span>' : ''}</td>
+              <td class="text-muted small">${new Date(a.created_at).toLocaleDateString('ko-KR')}</td>
+              <td>
+                <div class="d-flex gap-1">
+                  <button class="btn btn-sm btn-outline-secondary" onclick="editAnnouncement(${a.id}, '${esc(a.title)}', '${esc(a.body)}', '${a.event_date || ''}', ${a.is_pinned})">
+                    <i class="bi bi-pencil"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger" onclick="deleteAnnouncement(${a.id})">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function esc(str) {
+  return str.replace(/'/g, "\\'").replace(/\n/g, '\\n');
+}
+
+async function createAnnouncement() {
+  const title = document.getElementById('c-title').value.trim();
+  if (!title) { alert('제목을 입력해주세요.'); return; }
+  const body = {
+    title,
+    body: document.getElementById('c-body').value,
+    event_date: document.getElementById('c-date').value || null,
+    is_pinned: document.getElementById('c-pinned').checked,
+  };
+  const res = await fetch('/api/v1/announcements', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    bootstrap.Modal.getInstance(document.getElementById('createModal')).hide();
+    document.getElementById('c-title').value = '';
+    document.getElementById('c-body').value = '';
+    document.getElementById('c-date').value = '';
+    document.getElementById('c-pinned').checked = false;
+    loadAnnouncements();
+  } else {
+    alert('추가 실패: ' + (await res.json()).detail);
+  }
+}
+
+function editAnnouncement(id, title, body, date, pinned) {
+  document.getElementById('e-id').value = id;
+  document.getElementById('e-title').value = title.replace(/\\n/g, '\n');
+  document.getElementById('e-body').value = body.replace(/\\n/g, '\n');
+  document.getElementById('e-date').value = date;
+  document.getElementById('e-pinned').checked = pinned;
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+async function saveAnnouncement() {
+  const id = document.getElementById('e-id').value;
+  const title = document.getElementById('e-title').value.trim();
+  if (!title) { alert('제목을 입력해주세요.'); return; }
+  const body = {
+    title,
+    body: document.getElementById('e-body').value,
+    event_date: document.getElementById('e-date').value || null,
+    is_pinned: document.getElementById('e-pinned').checked,
+  };
+  const res = await fetch(`/api/v1/announcements/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    bootstrap.Modal.getInstance(document.getElementById('editModal')).hide();
+    loadAnnouncements();
+  } else {
+    alert('수정 실패: ' + (await res.json()).detail);
+  }
+}
+
+async function deleteAnnouncement(id) {
+  if (!confirm('공지를 삭제합니다. 계속하시겠습니까?')) return;
+  const res = await fetch(`/api/v1/announcements/${id}`, { method: 'DELETE' });
+  if (res.ok) loadAnnouncements();
+  else alert('삭제 실패');
+}
+
+loadAnnouncements();
+</script>
+{% endblock %}

@@ -1,0 +1,10 @@
+.img-thumb-card img {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+}
+
+.intro-text {
+    white-space: pre-wrap;
+    font-family: inherit;
+}

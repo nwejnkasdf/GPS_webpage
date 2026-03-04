@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}GPS 동아리{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/home.css">
+{% endblock %}
+
+{% block content %}
+<!-- 동아리 소개글 -->
+<section class="mb-5">
+  <h2 class="fw-bold mb-3"><i class="bi bi-info-circle me-2"></i>동아리 소개</h2>
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <pre id="intro-text" class="intro-text text-muted">불러오는 중...</pre>
+    </div>
+  </div>
+</section>
+
+<!-- 이미지 갤러리 -->
+<section id="gallery-section" class="mb-5" style="display:none;">
+  <h2 class="fw-bold mb-3"><i class="bi bi-images me-2"></i>갤러리</h2>
+  <div id="gallery-grid" class="row g-3"></div>
+</section>
+
+<!-- 공지/일정 -->
+<section id="announcements-section" class="mb-5" style="display:none;">
+  <h2 class="fw-bold mb-3"><i class="bi bi-megaphone me-2"></i>공지/일정</h2>
+  <div id="announcements-list" class="row g-3"></div>
+</section>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadHome() {
+  // 소개글
+  try {
+    const res = await fetch('/api/v1/club-info');
+    if (res.ok) {
+      const data = await res.json();
+      const el = document.getElementById('intro-text');
+      el.textContent = data.intro_text || '(소개글이 없습니다. 관리자 페이지에서 등록해주세요.)';
+    }
+  } catch {}
+
+  // 이미지
+  try {
+    const res = await fetch('/api/v1/club-images');
+    if (res.ok) {
+      const images = await res.json();
+      if (images.length > 0) {
+        document.getElementById('gallery-section').style.display = '';
+        const grid = document.getElementById('gallery-grid');
+        grid.innerHTML = images.map(img => `
+          <div class="col-6 col-md-4 col-lg-3">
+            <div class="card shadow-sm h-100">
+              <img src="/images/${img.id}" class="gallery-img card-img-top" alt="${img.caption || img.filename}" loading="lazy">
+              ${img.caption ? `<div class="card-footer text-muted small py-2">${img.caption}</div>` : ''}
+            </div>
+          </div>
+        `).join('');
+      }
+    }
+  } catch {}
+
+  // 공지
+  try {
+    const res = await fetch('/api/v1/announcements');
+    if (res.ok) {
+      const announcements = await res.json();
+      if (announcements.length > 0) {
+        document.getElementById('announcements-section').style.display = '';
+        const list = document.getElementById('announcements-list');
+        list.innerHTML = announcements.map(a => {
+          const pinClass = a.is_pinned ? 'border-warning' : '';
+          const pinIcon = a.is_pinned ? '<i class="bi bi-pin-angle-fill text-warning me-1"></i>' : '';
+          const dateBadge = a.event_date ? `<span class="badge bg-secondary ms-2">${a.event_date}</span>` : '';
+          const bodyPreview = a.body ? `<p class="card-text text-muted small announcement-body-preview mt-2">${a.body}</p>` : '';
+          return `
+            <div class="col-12 col-md-6">
+              <div class="card shadow-sm h-100 ${pinClass}">
+                <div class="card-body">
+                  <h6 class="card-title mb-1">${pinIcon}${a.title}${dateBadge}</h6>
+                  ${bodyPreview}
+                </div>
+                <div class="card-footer text-muted small">
+                  ${a.created_at ? new Date(a.created_at).toLocaleDateString('ko-KR') : ''}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+  } catch {}
+}
+
+loadHome();
+</script>
+{% endblock %}

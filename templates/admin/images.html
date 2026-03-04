@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}이미지 관리 — GPS 동아리{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/admin_club.css">
+{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/admin">관리자</a></li>
+    <li class="breadcrumb-item active">이미지 관리</li>
+  </ol>
+</nav>
+
+<h2 class="mb-4">이미지 관리</h2>
+
+<!-- 업로드 폼 -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header fw-semibold"><i class="bi bi-upload me-1"></i>이미지 업로드</div>
+  <div class="card-body">
+    <div id="upload-alert" class="alert d-none mb-3"></div>
+    <div class="row g-3 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label small">이미지 파일 (최대 10MB)</label>
+        <input type="file" id="upload-file" class="form-control" accept="image/*">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small">캡션 (선택)</label>
+        <input type="text" id="upload-caption" class="form-control" placeholder="이미지 설명">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small">정렬 순서</label>
+        <input type="number" id="upload-order" class="form-control" value="0" min="0">
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-primary w-100" onclick="uploadImage()">
+          <i class="bi bi-upload me-1"></i>업로드
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 이미지 목록 -->
+<h5 class="mb-3">등록된 이미지</h5>
+<div id="image-grid" class="row g-3">
+  <div class="col-12 text-muted">불러오는 중...</div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadImages() {
+  const res = await fetch('/api/v1/club-images');
+  const el = document.getElementById('image-grid');
+  if (!res.ok) { el.innerHTML = '<div class="col-12 text-danger">불러오기 실패</div>'; return; }
+  const images = await res.json();
+  if (!images.length) { el.innerHTML = '<div class="col-12 text-muted">등록된 이미지가 없습니다.</div>'; return; }
+  el.innerHTML = images.map(img => `
+    <div class="col-6 col-md-4 col-lg-3" id="img-card-${img.id}">
+      <div class="card shadow-sm img-thumb-card h-100">
+        <img src="/images/${img.id}" class="card-img-top" alt="${img.caption || img.filename}" loading="lazy">
+        <div class="card-body p-2">
+          <div class="small text-muted mb-2 text-truncate" title="${img.filename}">${img.filename}</div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">캡션</label>
+            <input type="text" id="caption-${img.id}" class="form-control form-control-sm" value="${img.caption}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">순서</label>
+            <input type="number" id="order-${img.id}" class="form-control form-control-sm" value="${img.sort_order}" min="0">
+          </div>
+          <div class="d-flex gap-1">
+            <button class="btn btn-sm btn-outline-primary flex-grow-1" onclick="updateImage(${img.id})">수정</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteImage(${img.id})"><i class="bi bi-trash"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function uploadImage() {
+  const file = document.getElementById('upload-file').files[0];
+  if (!file) { showUploadAlert('파일을 선택해주세요.', 'danger'); return; }
+
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('caption', document.getElementById('upload-caption').value);
+  fd.append('sort_order', document.getElementById('upload-order').value);
+
+  const res = await fetch('/api/v1/club-images', { method: 'POST', body: fd });
+  if (res.ok) {
+    document.getElementById('upload-file').value = '';
+    document.getElementById('upload-caption').value = '';
+    document.getElementById('upload-order').value = '0';
+    showUploadAlert('업로드 완료!', 'success');
+    loadImages();
+  } else {
+    const err = await res.json();
+    showUploadAlert('업로드 실패: ' + err.detail, 'danger');
+  }
+}
+
+async function updateImage(id) {
+  const body = {
+    caption: document.getElementById(`caption-${id}`).value,
+    sort_order: parseInt(document.getElementById(`order-${id}`).value),
+  };
+  const res = await fetch(`/api/v1/club-images/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) loadImages();
+  else alert('수정 실패: ' + (await res.json()).detail);
+}
+
+async function deleteImage(id) {
+  if (!confirm('이미지를 삭제합니다. 계속하시겠습니까?')) return;
+  const res = await fetch(`/api/v1/club-images/${id}`, { method: 'DELETE' });
+  if (res.ok) loadImages();
+  else alert('삭제 실패');
+}
+
+function showUploadAlert(msg, type) {
+  const el = document.getElementById('upload-alert');
+  el.className = `alert alert-${type} mb-3`;
+  el.textContent = msg;
+  el.classList.remove('d-none');
+  setTimeout(() => el.classList.add('d-none'), 3000);
+}
+
+loadImages();
+</script>
+{% endblock %}

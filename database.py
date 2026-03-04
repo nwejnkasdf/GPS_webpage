@@ -32,4 +32,12 @@ def get_db():
 
 def init_db():
     from models import session, member, week, week_problem, attendance  # noqa: F401
+    from models import club_info, club_image, announcement  # noqa: F401
     Base.metadata.create_all(bind=engine)
+
+
+def ensure_club_info(db):
+    from models.club_info import ClubInfo
+    if not db.query(ClubInfo).first():
+        db.add(ClubInfo(intro_text=""))
+        db.commit()

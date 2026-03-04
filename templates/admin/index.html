@@ -2,6 +2,18 @@
 {% block title %}관리자 대시보드{% endblock %}
 
 {% block content %}
+<div class="d-flex flex-wrap gap-2 mb-4">
+  <a href="/admin/club-info" class="btn btn-outline-secondary">
+    <i class="bi bi-file-text me-1"></i>동아리 소개 편집
+  </a>
+  <a href="/admin/images" class="btn btn-outline-secondary">
+    <i class="bi bi-images me-1"></i>이미지 관리
+  </a>
+  <a href="/admin/announcements" class="btn btn-outline-secondary">
+    <i class="bi bi-megaphone me-1"></i>공지/일정 관리
+  </a>
+</div>
+
 <div class="d-flex justify-content-between align-items-center mb-4">
   <h2>관리자 - 세션 관리</h2>
   <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
