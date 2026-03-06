@@ -25,9 +25,8 @@ class TelepathySubmissionCreate(BaseModel):
     ranking: list[int] = Field(min_length=1)
 
 
-class BojRoundCreate(BaseModel):
-    title: str | None = Field(default=None, max_length=100)
-    problem_count: int = Field(ge=2, le=10)
+class BojConfigUpdate(BaseModel):
+    sample_size: int = Field(ge=2, le=10)
 
 
 class BojSubmitRequest(BaseModel):

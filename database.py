@@ -45,6 +45,7 @@ def ensure_club_info(db):
 
 
 def ensure_recreation_defaults(db):
-    from services.recreation_service import ensure_default_telepathy_teams
+    from services.recreation_service import ensure_default_boj_config, ensure_default_telepathy_teams
 
     ensure_default_telepathy_teams(db)
+    ensure_default_boj_config(db)

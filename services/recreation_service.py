@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import random
 from typing import Any
 
 from sqlalchemy.orm import Session
 
-from models.boj_game import BojGameProblem, BojGameRound, BojGameRoundProblem
+from models.boj_game import BojGameConfig, BojGameCurrentProblem, BojGameProblem
 from models.telepathy import (
     TelepathyOption,
     TelepathyRound,
@@ -70,18 +71,24 @@ def difficulty_tier(level: int) -> str:
 
 
 def ensure_default_telepathy_teams(db: Session, team_count: int = 6) -> None:
-    existing = db.query(TelepathyTeam).count()
-    if existing > 0:
+    if db.query(TelepathyTeam).count() > 0:
         return
 
     for team_number in range(1, team_count + 1):
-        db.add(
-            TelepathyTeam(
-                name=f"{team_number}조",
-                display_order=team_number,
-            )
-        )
+        db.add(TelepathyTeam(name=f"{team_number}조", display_order=team_number))
     db.commit()
+
+
+def ensure_default_boj_config(db: Session, sample_size: int = 4) -> BojGameConfig:
+    config = db.query(BojGameConfig).order_by(BojGameConfig.id).first()
+    if config is not None:
+        return config
+
+    config = BojGameConfig(sample_size=sample_size)
+    db.add(config)
+    db.commit()
+    db.refresh(config)
+    return config
 
 
 def sort_telepathy_teams(teams: list[TelepathyTeam]) -> list[TelepathyTeam]:
@@ -284,53 +291,97 @@ def serialize_boj_problem(problem: BojGameProblem) -> dict[str, Any]:
     }
 
 
-def serialize_boj_round_problem(problem: BojGameRoundProblem) -> dict[str, Any]:
+def regenerate_boj_current_set(db: Session, config: BojGameConfig | None = None) -> BojGameConfig:
+    config = config or ensure_default_boj_config(db)
+    pool_problems = db.query(BojGameProblem).all()
+
+    for current_problem in list(config.current_problems):
+        db.delete(current_problem)
+    db.flush()
+
+    if len(pool_problems) >= config.sample_size:
+        selected = random.sample(pool_problems, config.sample_size)
+        random.shuffle(selected)
+        for display_order, pool_problem in enumerate(selected, start=1):
+            db.add(
+                BojGameCurrentProblem(
+                    config_id=config.id,
+                    pool_problem_id=pool_problem.id,
+                    display_order=display_order,
+                )
+            )
+        config.current_set_nonce += 1
+
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+def ensure_boj_current_set(db: Session) -> BojGameConfig:
+    config = ensure_default_boj_config(db)
+    has_current_set = (
+        db.query(BojGameCurrentProblem)
+        .filter(BojGameCurrentProblem.config_id == config.id)
+        .count()
+        > 0
+    )
+    pool_count = db.query(BojGameProblem).count()
+    if not has_current_set and pool_count >= config.sample_size:
+        config = regenerate_boj_current_set(db, config)
+    return config
+
+
+def serialize_boj_current_problem(problem: BojGameCurrentProblem) -> dict[str, Any]:
+    pool_problem = problem.pool_problem
     return {
         "id": problem.id,
-        "problem_number": problem.problem_number,
-        "title": problem.title,
-        "difficulty": problem.difficulty,
-        "difficulty_label": difficulty_label(problem.difficulty),
-        "difficulty_tier": difficulty_tier(problem.difficulty),
+        "problem_number": pool_problem.problem_number,
+        "title": pool_problem.title,
+        "difficulty": pool_problem.difficulty,
+        "difficulty_label": difficulty_label(pool_problem.difficulty),
+        "difficulty_tier": difficulty_tier(pool_problem.difficulty),
         "image_url": (
-            f"/api/v1/public/recreation/boj/round-problems/{problem.id}/image"
-            if problem.image_data
+            f"/api/v1/public/recreation/boj/problems/{pool_problem.id}/image"
+            if pool_problem.image_data
             else None
         ),
         "display_order": problem.display_order,
     }
 
 
-def serialize_boj_round(round_obj: BojGameRound) -> dict[str, Any]:
-    problems = sorted(round_obj.problems, key=lambda problem: (problem.display_order, problem.id))
+def serialize_boj_current_set(config: BojGameConfig) -> dict[str, Any] | None:
+    current_problems = sorted(config.current_problems, key=lambda problem: (problem.display_order, problem.id))
+    if not current_problems:
+        return None
+
     return {
-        "id": round_obj.id,
-        "title": round_obj.title,
-        "is_active": round_obj.is_active,
-        "last_result_status": round_obj.last_result_status,
-        "last_submitted_order": round_obj.last_submitted_order,
-        "last_attempt_at": _iso(round_obj.last_attempt_at),
-        "created_at": _iso(round_obj.created_at),
-        "problems": [serialize_boj_round_problem(problem) for problem in problems],
+        "id": config.current_set_nonce,
+        "title": f"랜덤 세트 {config.current_set_nonce}",
+        "sample_size": config.sample_size,
+        "problems": [serialize_boj_current_problem(problem) for problem in current_problems],
     }
 
 
 def build_boj_state(db: Session) -> dict[str, Any]:
+    config = ensure_boj_current_set(db)
     pool_problems = (
         db.query(BojGameProblem)
         .order_by(BojGameProblem.created_at.desc(), BojGameProblem.id.desc())
         .all()
     )
-    rounds = (
-        db.query(BojGameRound)
-        .order_by(BojGameRound.created_at.desc(), BojGameRound.id.desc())
-        .all()
-    )
-    round_payloads = [serialize_boj_round(round_obj) for round_obj in rounds]
-    current_round = next((round_payload for round_payload in round_payloads if round_payload["is_active"]), None)
+    current_round = serialize_boj_current_set(config)
 
     return {
         "pool_problems": [serialize_boj_problem(problem) for problem in pool_problems],
-        "rounds": round_payloads,
+        "config": {
+            "id": config.id,
+            "sample_size": config.sample_size,
+            "current_set_nonce": config.current_set_nonce,
+            "last_result_status": config.last_result_status,
+            "last_submitted_order": config.last_submitted_order,
+            "last_attempt_at": _iso(config.last_attempt_at),
+            "pool_count": len(pool_problems),
+            "is_ready": len(pool_problems) >= config.sample_size and current_round is not None,
+        },
         "current_round": current_round,
     }

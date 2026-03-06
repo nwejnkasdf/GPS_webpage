@@ -313,6 +313,9 @@ async function submitOrder() {
     }
 
     const result = await response.json();
+    currentRound = result.current_round;
+    sequenceValue = '';
+    renderProblems();
     showEffect(result.is_correct);
   } catch (error) {
     alert(error.message);

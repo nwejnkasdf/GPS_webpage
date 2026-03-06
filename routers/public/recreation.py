@@ -5,14 +5,22 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models.boj_game import BojGameProblem, BojGameRound, BojGameRoundProblem
-from models.telepathy import TelepathyOption, TelepathyRound, TelepathySubmission, TelepathySubmissionRole, TelepathyTeam
+from models.boj_game import BojGameConfig, BojGameCurrentProblem, BojGameProblem
+from models.telepathy import (
+    TelepathyOption,
+    TelepathyRound,
+    TelepathySubmission,
+    TelepathySubmissionRole,
+    TelepathyTeam,
+)
 from schemas.recreation import BojSubmitRequest, TelepathySubmissionCreate
 from services.recreation_service import (
     build_boj_state,
     build_telepathy_state,
+    ensure_boj_current_set,
+    ensure_default_boj_config,
     ensure_default_telepathy_teams,
-    serialize_boj_round,
+    regenerate_boj_current_set,
     serialize_telepathy_round,
     sort_telepathy_teams,
 )
@@ -29,13 +37,8 @@ def _get_active_telepathy_round(db: Session) -> TelepathyRound | None:
     )
 
 
-def _get_active_boj_round(db: Session) -> BojGameRound | None:
-    return (
-        db.query(BojGameRound)
-        .filter(BojGameRound.is_active.is_(True))
-        .order_by(BojGameRound.created_at.desc(), BojGameRound.id.desc())
-        .first()
-    )
+def _get_boj_config(db: Session) -> BojGameConfig:
+    return ensure_default_boj_config(db)
 
 
 def _role_from_path(role: str) -> TelepathySubmissionRole:
@@ -148,48 +151,50 @@ def get_current_boj_round(db: Session = Depends(get_db)):
     state = build_boj_state(db)
     return {
         "current_round": state["current_round"],
-        "rounds": state["rounds"],
+        "config": state["config"],
     }
 
 
 @router.post("/public/recreation/boj/submit")
 def submit_boj_round(payload: BojSubmitRequest, db: Session = Depends(get_db)):
-    active_round = _get_active_boj_round(db)
-    if active_round is None:
-        raise HTTPException(status_code=404, detail="현재 진행 중인 백준 라운드가 없습니다.")
+    config = ensure_boj_current_set(db)
+    current_problems = (
+        db.query(BojGameCurrentProblem)
+        .filter(BojGameCurrentProblem.config_id == config.id)
+        .order_by(BojGameCurrentProblem.display_order, BojGameCurrentProblem.id)
+        .all()
+    )
+    if not current_problems:
+        raise HTTPException(status_code=404, detail="현재 진행 중인 문제 세트가 없습니다.")
 
-    round_problems = sorted(active_round.problems, key=lambda problem: (problem.display_order, problem.id))
-    round_problem_ids = [problem.id for problem in round_problems]
+    current_problem_ids = [problem.id for problem in current_problems]
     submitted_ids = payload.ordered_problem_ids
-    if len(submitted_ids) != len(round_problem_ids) or set(submitted_ids) != set(round_problem_ids):
-        raise HTTPException(status_code=400, detail="현재 라운드의 모든 문제를 한 번씩 정렬해야 합니다.")
+    if len(submitted_ids) != len(current_problem_ids) or set(submitted_ids) != set(current_problem_ids):
+        raise HTTPException(status_code=400, detail="현재 세트의 모든 문제를 한 번씩 정렬해야 합니다.")
 
-    difficulty_lookup = {problem.id: problem.difficulty for problem in round_problems}
+    difficulty_lookup = {problem.id: problem.pool_problem.difficulty for problem in current_problems}
     difficulties = [difficulty_lookup[problem_id] for problem_id in submitted_ids]
     is_correct = all(left <= right for left, right in zip(difficulties, difficulties[1:]))
 
-    active_round.last_result_status = "passed" if is_correct else "failed"
-    active_round.last_submitted_order = submitted_ids
-    active_round.last_attempt_at = datetime.utcnow()
+    config.last_result_status = "passed" if is_correct else "failed"
+    config.last_submitted_order = submitted_ids
+    config.last_attempt_at = datetime.utcnow()
     db.commit()
 
+    pool_count = db.query(BojGameProblem).count()
+    if pool_count >= config.sample_size:
+        config = regenerate_boj_current_set(db, config)
+
+    next_state = build_boj_state(db)
     return {
         "is_correct": is_correct,
-        "current_round": serialize_boj_round(active_round),
+        "current_round": next_state["current_round"],
     }
 
 
 @router.get("/public/recreation/boj/problems/{problem_id}/image")
 def get_boj_problem_image(problem_id: int, db: Session = Depends(get_db)):
     problem = db.query(BojGameProblem).filter(BojGameProblem.id == problem_id).first()
-    if problem is None or not problem.image_data:
-        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
-    return Response(content=problem.image_data, media_type=problem.image_content_type or "image/jpeg")
-
-
-@router.get("/public/recreation/boj/round-problems/{problem_id}/image")
-def get_boj_round_problem_image(problem_id: int, db: Session = Depends(get_db)):
-    problem = db.query(BojGameRoundProblem).filter(BojGameRoundProblem.id == problem_id).first()
     if problem is None or not problem.image_data:
         raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다.")
     return Response(content=problem.image_data, media_type=problem.image_content_type or "image/jpeg")
