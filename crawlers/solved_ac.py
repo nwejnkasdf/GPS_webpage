@@ -44,17 +44,25 @@ def is_gold_or_higher(level: int) -> bool:
     return level >= 11
 
 
-async def fetch_problem_difficulty(problem_id: int) -> int:
-    """Returns solved.ac level (0 if unknown/error)."""
+async def fetch_problem_metadata(problem_id: int) -> dict[str, str | int]:
+    """Returns solved.ac metadata. Difficulty 0 means unknown/error."""
     await solved_limiter.acquire()
     url = f"{SOLVED_AC_BASE}/problem/show?problemId={problem_id}"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url, headers=HEADERS)
             if response.status_code == 404:
-                return 0
+                return {"difficulty": 0, "title": ""}
             response.raise_for_status()
             data = response.json()
-            return data.get("level", 0)
+            return {
+                "difficulty": data.get("level", 0),
+                "title": data.get("titleKo") or data.get("title") or "",
+            }
     except Exception:
-        return 0
+        return {"difficulty": 0, "title": ""}
+
+
+async def fetch_problem_difficulty(problem_id: int) -> int:
+    metadata = await fetch_problem_metadata(problem_id)
+    return int(metadata["difficulty"])

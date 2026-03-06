@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from auth import require_admin_api
+from crawlers.solved_ac import fetch_problem_metadata
 from database import get_db
 from models.boj_game import BojGameProblem, BojGameRound, BojGameRoundProblem
 from models.telepathy import TelepathyOption, TelepathyRound, TelepathySubmission, TelepathyTeam
@@ -192,14 +193,10 @@ def get_boj_admin_state(db: Session = Depends(get_db)):
 @router.post("/recreation/boj/problems", dependencies=[Depends(require_admin_api)])
 async def create_boj_problem(
     problem_number: int = Form(...),
-    difficulty: int = Form(...),
     title: str = Form(""),
     image_file: UploadFile | None = File(default=None),
     db: Session = Depends(get_db),
 ):
-    if difficulty < 1 or difficulty > 30:
-        raise HTTPException(status_code=400, detail="난이도는 1부터 30 사이여야 합니다.")
-
     existing = (
         db.query(BojGameProblem)
         .filter(BojGameProblem.problem_number == problem_number)
@@ -214,9 +211,19 @@ async def create_boj_problem(
         image_data = await image_file.read()
         image_content_type = image_file.content_type or "application/octet-stream"
 
+    metadata = await fetch_problem_metadata(problem_number)
+    difficulty = int(metadata["difficulty"])
+    if difficulty < 1 or difficulty > 30:
+        raise HTTPException(
+            status_code=400,
+            detail="solved.ac에서 난이도를 가져오지 못했습니다. 문제 번호를 확인하거나 잠시 후 다시 시도해 주세요.",
+        )
+
+    title_text = title.strip() or str(metadata["title"]).strip()
+
     problem = BojGameProblem(
         problem_number=problem_number,
-        title=title.strip(),
+        title=title_text,
         difficulty=difficulty,
         image_data=image_data,
         image_content_type=image_content_type,
