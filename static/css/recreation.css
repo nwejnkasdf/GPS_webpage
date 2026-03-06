@@ -56,7 +56,7 @@
 }
 
 .boj-stage {
-  width: min(96vw, 1600px);
+  width: min(96vw, 1400px);
   margin-left: 50%;
   transform: translateX(-50%);
 }
@@ -226,6 +226,84 @@
 
 .sortable-item.dragging {
   opacity: 0.45;
+}
+
+.boj-order-panel {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgba(22, 50, 79, 0.05);
+  border: 1px solid rgba(22, 50, 79, 0.08);
+}
+
+.boj-order-grid {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.boj-sequence-input {
+  max-width: 420px;
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+}
+
+.boj-sequence-help {
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.boj-order-slot {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.boj-order-slot__label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #495057;
+}
+
+.boj-problem-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.boj-problem-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: #fff;
+  border: 1px solid rgba(22, 50, 79, 0.08);
+}
+
+.boj-problem-card__meta {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.boj-problem-card__image {
+  width: 100%;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(22, 50, 79, 0.08);
+  background: linear-gradient(180deg, rgba(47, 111, 176, 0.08), rgba(255, 255, 255, 0.95));
+  padding: 0.6rem;
+}
+
+.boj-problem-card__image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.7rem;
+}
+
+.boj-problem-card__image--empty {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .boj-sort-list-wide {
@@ -420,6 +498,10 @@
 @media (max-width: 767px) {
   .rank-item,
   .sortable-item {
+    grid-template-columns: 1fr;
+  }
+
+  .boj-problem-grid {
     grid-template-columns: 1fr;
   }
 

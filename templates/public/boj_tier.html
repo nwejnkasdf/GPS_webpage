@@ -14,7 +14,7 @@
           <span class="badge text-bg-light mb-2">노트북 게임</span>
           <h1 class="h3 fw-bold mb-2">백준 티어 맞추기</h1>
           <p class="mb-0 text-white-50">
-            문제 캡처를 크게 펼쳐서 보고, 난이도 오름차순으로 정렬한 뒤 제출하세요.
+            카드에 붙은 번호를 쉬운 순서부터 이어서 입력한 뒤 제출하세요.
             같은 난이도끼리는 순서가 바뀌어도 정답으로 처리됩니다.
           </p>
         </div>
@@ -36,8 +36,8 @@
           <p id="round-meta" class="text-muted mb-0">운영자가 라운드를 시작하면 문제가 표시됩니다.</p>
         </div>
         <div class="d-flex flex-wrap gap-2">
-          <button class="btn btn-outline-secondary" id="shuffle-view-btn" type="button">
-            <i class="bi bi-arrow-repeat me-1"></i>현재 순서 다시 보기
+          <button class="btn btn-outline-secondary" id="clear-order-btn" type="button">
+            <i class="bi bi-eraser me-1"></i>입력 초기화
           </button>
           <button class="btn btn-success" id="submit-btn" type="button">
             <i class="bi bi-check2-circle me-1"></i>제출하기
@@ -45,12 +45,26 @@
         </div>
       </div>
 
-      <p class="text-muted small mb-3">
-        카드 전체를 드래그하거나 위아래 버튼으로 순서를 바꿀 수 있습니다.
-        캡처 이미지는 문제 설명, 시간 제한, 메모리 제한이 읽히도록 크게 표시됩니다.
-      </p>
+      <section class="boj-order-panel mb-4">
+        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+          <div>
+            <h3 class="h5 fw-bold mb-1">정답 입력</h3>
+            <p class="text-muted mb-0">예시: 카드 순서가 2번, 3번, 1번이면 `231`</p>
+          </div>
+          <div id="available-problems" class="ranking-pill-list"></div>
+        </div>
+        <input
+          id="sequence-input"
+          type="text"
+          class="form-control boj-sequence-input"
+          placeholder="예: 2314"
+          autocomplete="off"
+          inputmode="text"
+        >
+        <div id="sequence-help" class="boj-sequence-help mt-2"></div>
+      </section>
 
-      <div id="boj-list" class="boj-sort-list boj-sort-list-wide"></div>
+      <div id="boj-list" class="boj-problem-grid"></div>
     </div>
   </section>
 </div>
@@ -67,118 +81,121 @@
 <script>
 const ROUND_TITLE = document.getElementById('round-title');
 const ROUND_META = document.getElementById('round-meta');
+const AVAILABLE_PROBLEMS = document.getElementById('available-problems');
+const SEQUENCE_INPUT = document.getElementById('sequence-input');
+const SEQUENCE_HELP = document.getElementById('sequence-help');
 const BOJ_LIST = document.getElementById('boj-list');
 const EFFECT_OVERLAY = document.getElementById('effect-overlay');
 const EFFECT_CONTENT = document.getElementById('effect-content');
 const SUBMIT_BTN = document.getElementById('submit-btn');
-const SHUFFLE_VIEW_BTN = document.getElementById('shuffle-view-btn');
+const CLEAR_ORDER_BTN = document.getElementById('clear-order-btn');
 
 let currentRound = null;
-let orderedProblemIds = [];
-let draggedProblemId = null;
-let isDirtyOrder = false;
+let sequenceValue = '';
 let audioContext = null;
+
+function renderInputPanel() {
+  if (!currentRound) {
+    AVAILABLE_PROBLEMS.innerHTML = '';
+    SEQUENCE_INPUT.value = '';
+    SEQUENCE_INPUT.disabled = true;
+    SUBMIT_BTN.disabled = true;
+    CLEAR_ORDER_BTN.disabled = true;
+    SEQUENCE_HELP.textContent = '';
+    return;
+  }
+
+  AVAILABLE_PROBLEMS.innerHTML = currentRound.problems.map((problem, index) => `
+    <span class="ranking-pill"><strong>${index + 1}</strong>문제 ${problem.problem_number}</span>
+  `).join('');
+
+  SEQUENCE_INPUT.value = sequenceValue;
+  SEQUENCE_INPUT.disabled = false;
+  SUBMIT_BTN.disabled = false;
+  CLEAR_ORDER_BTN.disabled = false;
+
+  if (currentRound.problems.length <= 9) {
+    SEQUENCE_HELP.textContent = '카드 번호를 붙여서 입력하면 됩니다. 예: 2314';
+  } else {
+    SEQUENCE_HELP.textContent = '문제가 10개 이상이면 공백이나 쉼표로 구분해 주세요. 예: 10 2 1 3';
+  }
+}
 
 function renderProblems() {
   if (!currentRound) {
     ROUND_TITLE.textContent = '라운드 대기 중';
     ROUND_META.textContent = '운영자가 라운드를 시작하면 문제가 표시됩니다.';
     BOJ_LIST.innerHTML = '<div class="alert alert-secondary mb-0">현재 진행 중인 라운드가 없습니다.</div>';
-    SUBMIT_BTN.disabled = true;
-    SHUFFLE_VIEW_BTN.disabled = true;
+    renderInputPanel();
     return;
   }
 
   ROUND_TITLE.textContent = currentRound.title;
-  ROUND_META.textContent = `${currentRound.problems.length}개의 문제를 난이도 오름차순으로 정렬하세요.`;
-  SUBMIT_BTN.disabled = false;
-  SHUFFLE_VIEW_BTN.disabled = false;
+  ROUND_META.textContent = `${currentRound.problems.length}개의 카드를 보고 번호 순서만 입력하세요.`;
 
-  const problemMap = Object.fromEntries(currentRound.problems.map(problem => [problem.id, problem]));
-  BOJ_LIST.innerHTML = orderedProblemIds.map((problemId, index) => {
-    const problem = problemMap[problemId];
+  BOJ_LIST.innerHTML = currentRound.problems.map((problem, index) => {
     const media = problem.image_url
-      ? `<div class="boj-media-wide"><img src="${problem.image_url}" alt="${problem.problem_number}"></div>`
-      : `<div class="boj-media-wide boj-media-wide-empty"><span class="boj-placeholder"><i class="bi bi-card-image"></i></span></div>`;
+      ? `<div class="boj-problem-card__image"><img src="${problem.image_url}" alt="${problem.problem_number}"></div>`
+      : `<div class="boj-problem-card__image boj-problem-card__image--empty"><span class="boj-placeholder"><i class="bi bi-card-image"></i></span></div>`;
 
     return `
-      <article
-        class="sortable-item sortable-item-wide"
-        draggable="true"
-        data-problem-id="${problem.id}"
-        ondragstart="handleDragStart(event)"
-        ondragover="handleDragOver(event)"
-        ondrop="handleDrop(event)"
-        ondragend="handleDragEnd(event)"
-      >
-        <div class="sortable-item-wide__header">
-          <div class="sortable-item-wide__meta">
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              <span class="rank-number">${index + 1}</span>
-              <span class="badge text-bg-dark">문제 ${problem.problem_number}</span>
-              <span class="badge text-bg-secondary">Drag</span>
-            </div>
-            <div class="fw-semibold">${problem.title || '제목 없이 등록된 문제입니다.'}</div>
-            <div class="sortable-item-wide__hint">
-              캡처를 크게 보면서 문제 설명, 시간 제한, 메모리 제한까지 확인한 뒤 난이도를 추리하세요.
-            </div>
+      <article class="boj-problem-card">
+        <div class="boj-problem-card__meta">
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <span class="rank-number">${index + 1}</span>
+            <span class="badge text-bg-dark">문제 ${problem.problem_number}</span>
           </div>
-          <div class="d-flex gap-2">
-            <button class="btn btn-outline-secondary btn-sm" type="button" onclick="moveProblem(${index}, -1)" ${index === 0 ? 'disabled' : ''}>
-              <i class="bi bi-arrow-up"></i>
-            </button>
-            <button class="btn btn-outline-secondary btn-sm" type="button" onclick="moveProblem(${index}, 1)" ${index === orderedProblemIds.length - 1 ? 'disabled' : ''}>
-              <i class="bi bi-arrow-down"></i>
-            </button>
-          </div>
+          <div class="fw-semibold">${problem.title || '제목 없이 등록된 문제입니다.'}</div>
         </div>
         ${media}
-        <div class="text-muted small">
-          페이지를 아래로 스크롤하면서 캡처를 끝까지 보고, 맞는 위치로 카드 순서를 바꾸면 됩니다.
-        </div>
       </article>
     `;
   }).join('');
+
+  renderInputPanel();
 }
 
-function moveProblem(index, delta) {
-  const target = index + delta;
-  if (target < 0 || target >= orderedProblemIds.length) {
-    return;
+function clearSequenceInput() {
+  sequenceValue = '';
+  SEQUENCE_INPUT.value = '';
+}
+
+function parseSequence() {
+  if (!currentRound) {
+    throw new Error('현재 진행 중인 라운드가 없습니다.');
   }
-  [orderedProblemIds[index], orderedProblemIds[target]] = [orderedProblemIds[target], orderedProblemIds[index]];
-  isDirtyOrder = true;
-  renderProblems();
-}
 
-function handleDragStart(event) {
-  draggedProblemId = Number(event.currentTarget.dataset.problemId);
-  event.currentTarget.classList.add('dragging');
-}
-
-function handleDragOver(event) {
-  event.preventDefault();
-}
-
-function handleDrop(event) {
-  event.preventDefault();
-  const targetProblemId = Number(event.currentTarget.dataset.problemId);
-  if (!draggedProblemId || draggedProblemId === targetProblemId) {
-    return;
+  const raw = sequenceValue.trim();
+  if (!raw) {
+    throw new Error('순서를 입력해 주세요.');
   }
-  const nextOrder = [...orderedProblemIds];
-  const fromIndex = nextOrder.indexOf(draggedProblemId);
-  const toIndex = nextOrder.indexOf(targetProblemId);
-  nextOrder.splice(fromIndex, 1);
-  nextOrder.splice(toIndex, 0, draggedProblemId);
-  orderedProblemIds = nextOrder;
-  isDirtyOrder = true;
-  renderProblems();
-}
 
-function handleDragEnd(event) {
-  event.currentTarget.classList.remove('dragging');
-  draggedProblemId = null;
+  const maxLabel = currentRound.problems.length;
+  let labels = [];
+
+  if (/[,\s]/.test(raw)) {
+    labels = raw.split(/[\s,]+/).filter(Boolean).map(value => Number(value));
+  } else if (maxLabel <= 9 && /^\d+$/.test(raw)) {
+    labels = raw.split('').map(value => Number(value));
+  } else {
+    throw new Error('문제가 10개 이상이면 공백이나 쉼표로 구분해서 입력해 주세요.');
+  }
+
+  if (labels.length !== maxLabel) {
+    throw new Error(`현재 라운드는 ${maxLabel}개의 번호를 입력해야 합니다.`);
+  }
+
+  const uniqueLabels = new Set(labels);
+  if (uniqueLabels.size !== labels.length) {
+    throw new Error('번호를 중복 없이 한 번씩만 입력해 주세요.');
+  }
+
+  const invalidLabel = labels.find(label => !Number.isInteger(label) || label < 1 || label > maxLabel);
+  if (invalidLabel) {
+    throw new Error(`입력할 수 없는 카드 번호입니다: ${invalidLabel}`);
+  }
+
+  return labels.map(label => currentRound.problems[label - 1].id);
 }
 
 function buildSuccessEffect() {
@@ -263,54 +280,58 @@ function hideEffect() {
 }
 
 async function loadCurrentRound() {
-  const previousRound = currentRound;
+  const previousRoundId = currentRound ? currentRound.id : null;
   const response = await fetch('/api/v1/public/recreation/boj/current');
   const data = await response.json();
-  const nextRound = data.current_round;
-  const roundChanged = !previousRound || !nextRound || previousRound.id !== nextRound.id;
-  currentRound = nextRound;
-  if (currentRound && roundChanged) {
-    orderedProblemIds = currentRound.problems.map(problem => problem.id);
-    isDirtyOrder = false;
-  } else if (currentRound && !isDirtyOrder) {
-    orderedProblemIds = currentRound.problems.map(problem => problem.id);
-  } else if (!currentRound) {
-    orderedProblemIds = [];
-    isDirtyOrder = false;
+  currentRound = data.current_round;
+
+  if (!currentRound) {
+    sequenceValue = '';
+    renderProblems();
+    return;
   }
+
+  if (previousRoundId !== currentRound.id) {
+    sequenceValue = '';
+  }
+
   renderProblems();
 }
 
 async function submitOrder() {
-  if (!currentRound) {
-    return;
-  }
-  const response = await fetch('/api/v1/public/recreation/boj/submit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ordered_problem_ids: orderedProblemIds }),
-  });
+  try {
+    const orderedProblemIds = parseSequence();
+    const response = await fetch('/api/v1/public/recreation/boj/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ordered_problem_ids: orderedProblemIds }),
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    alert(error.detail || '판정에 실패했습니다.');
-    return;
-  }
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || '판정에 실패했습니다.');
+    }
 
-  const result = await response.json();
-  isDirtyOrder = false;
-  showEffect(result.is_correct);
+    const result = await response.json();
+    showEffect(result.is_correct);
+  } catch (error) {
+    alert(error.message);
+  }
 }
 
-SUBMIT_BTN.addEventListener('click', submitOrder);
-SHUFFLE_VIEW_BTN.addEventListener('click', () => {
-  if (!currentRound) {
-    return;
-  }
-  orderedProblemIds = currentRound.problems.map(problem => problem.id);
-  isDirtyOrder = false;
-  renderProblems();
+SEQUENCE_INPUT.addEventListener('input', (event) => {
+  sequenceValue = event.target.value;
 });
+
+SEQUENCE_INPUT.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    submitOrder();
+  }
+});
+
+SUBMIT_BTN.addEventListener('click', submitOrder);
+CLEAR_ORDER_BTN.addEventListener('click', clearSequenceInput);
 
 loadCurrentRound();
 setInterval(loadCurrentRound, 5000);
