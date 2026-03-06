@@ -13,7 +13,7 @@
         <span class="badge text-bg-light mb-2">{{ role_label }} 화면</span>
         <h1 class="h3 fw-bold mb-2">{{ page_title }}</h1>
         <p class="mb-0 text-white-50">
-          현재 진행 중인 라운드의 모든 선택지를 순위대로 정렬한 뒤 저장하세요.
+          카드에 붙은 번호를 보고 {{ role_label }}가 생각한 순서를 `1234`, `2341`처럼 입력해 제출하세요.
         </p>
       </div>
       <div class="d-flex flex-wrap gap-2">
@@ -35,7 +35,7 @@
         <div class="col-md-8">
           <div class="d-flex flex-wrap gap-2 align-items-center">
             <button class="btn btn-primary" id="save-btn" type="button">
-              <i class="bi bi-check2-circle me-1"></i>순위 저장
+              <i class="bi bi-check2-circle me-1"></i>순위 제출
             </button>
             <button class="btn btn-outline-secondary" id="reload-btn" type="button">
               <i class="bi bi-arrow-clockwise me-1"></i>새로고침
@@ -46,7 +46,27 @@
       </div>
 
       <div id="round-meta" class="mb-3"></div>
-      <div id="rank-wrap" class="rank-list"></div>
+
+      <section class="telepathy-order-panel mb-4">
+        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+          <div>
+            <h2 class="h5 fw-bold mb-1">순위 입력</h2>
+            <p class="text-muted mb-0">예시: 2번, 3번, 4번, 1번 순서면 `2341`</p>
+          </div>
+          <div id="available-options" class="ranking-pill-list"></div>
+        </div>
+        <input
+          id="sequence-input"
+          type="text"
+          class="form-control telepathy-sequence-input"
+          placeholder="예: 2341"
+          autocomplete="off"
+          inputmode="numeric"
+        >
+        <div id="sequence-help" class="telepathy-sequence-help mt-2"></div>
+      </section>
+
+      <div id="option-grid" class="telepathy-option-grid"></div>
     </div>
   </section>
 </div>
@@ -57,15 +77,18 @@
 const ROLE = "{{ role }}";
 const ROLE_LABEL = "{{ role_label }}";
 const TEAM_SELECT = document.getElementById('team-select');
-const RANK_WRAP = document.getElementById('rank-wrap');
 const ROUND_META = document.getElementById('round-meta');
 const SAVE_STATUS = document.getElementById('save-status');
 const SAVE_BTN = document.getElementById('save-btn');
 const RELOAD_BTN = document.getElementById('reload-btn');
+const AVAILABLE_OPTIONS = document.getElementById('available-options');
+const SEQUENCE_INPUT = document.getElementById('sequence-input');
+const SEQUENCE_HELP = document.getElementById('sequence-help');
+const OPTION_GRID = document.getElementById('option-grid');
 
 let currentTeamId = Number(new URLSearchParams(window.location.search).get('team_id')) || null;
 let currentRound = null;
-let ranking = [];
+let sequenceValue = '';
 let dirty = false;
 
 function updateUrlTeam(teamId) {
@@ -78,38 +101,98 @@ function updateUrlTeam(teamId) {
   history.replaceState({}, '', url);
 }
 
-function optionCard(option, index, canMoveUp, canMoveDown) {
-  const media = option.image_url
-    ? `<div class="rank-media"><img src="${option.image_url}" alt="${option.name}"></div>`
-    : `<div class="rank-media"><span class="rank-placeholder"><i class="bi bi-image"></i></span></div>`;
-  return `
-    <div class="rank-item">
-      <div class="d-flex align-items-center gap-3">
-        <span class="rank-number">${index + 1}</span>
-        ${media}
-      </div>
-      <div>
-        <div class="fw-semibold">${option.name}</div>
-        <div class="text-muted small">${ROLE_LABEL}의 ${index + 1}순위</div>
-      </div>
-      <div class="rank-controls">
-        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="moveRanking(${index}, -1)" ${canMoveUp ? '' : 'disabled'}>
-          <i class="bi bi-arrow-up"></i>
-        </button>
-        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="moveRanking(${index}, 1)" ${canMoveDown ? '' : 'disabled'}>
-          <i class="bi bi-arrow-down"></i>
-        </button>
-      </div>
-    </div>
-  `;
+function formatLabelSequence(labels) {
+  return labels.length <= 9 ? labels.join('') : labels.join(' ');
+}
+
+function defaultSequenceForCurrentRound() {
+  if (!currentRound) {
+    return '';
+  }
+  return formatLabelSequence(
+    Array.from({ length: currentRound.options.length }, (_, index) => index + 1),
+  );
+}
+
+function sequenceFromRanking(submissionRanking) {
+  if (!currentRound) {
+    return '';
+  }
+
+  const labelByOptionId = new Map(
+    currentRound.options.map((option, index) => [option.id, index + 1]),
+  );
+  const labels = submissionRanking.map((optionId) => labelByOptionId.get(optionId));
+  if (labels.some((label) => label === undefined)) {
+    return defaultSequenceForCurrentRound();
+  }
+  return formatLabelSequence(labels);
 }
 
 function renderTeamOptions(teams) {
-  const selectedId = currentTeamId && teams.some(team => team.id === currentTeamId) ? currentTeamId : '';
+  const selectedId = currentTeamId && teams.some((team) => team.id === currentTeamId) ? currentTeamId : '';
   TEAM_SELECT.innerHTML = `
     <option value="">조를 선택하세요</option>
-    ${teams.map(team => `<option value="${team.id}" ${selectedId === team.id ? 'selected' : ''}>${team.name}</option>`).join('')}
+    ${teams.map((team) => `<option value="${team.id}" ${selectedId === team.id ? 'selected' : ''}>${team.name}</option>`).join('')}
   `;
+}
+
+function renderInputPanel() {
+  if (!currentRound) {
+    AVAILABLE_OPTIONS.innerHTML = '';
+    SEQUENCE_INPUT.value = '';
+    SEQUENCE_INPUT.disabled = true;
+    SEQUENCE_HELP.textContent = '';
+    SAVE_BTN.disabled = true;
+    return;
+  }
+
+  AVAILABLE_OPTIONS.innerHTML = currentRound.options.map((option, index) => `
+    <span class="ranking-pill"><strong>${index + 1}</strong>${option.name}</span>
+  `).join('');
+
+  SEQUENCE_INPUT.value = sequenceValue;
+  SEQUENCE_INPUT.disabled = false;
+  SAVE_BTN.disabled = !currentTeamId;
+
+  if (currentRound.options.length <= 9) {
+    SEQUENCE_HELP.textContent = '카드 번호를 붙여서 입력하세요. 예: 2341';
+  } else {
+    SEQUENCE_HELP.textContent = '선택지가 10개 이상이면 공백이나 쉼표로 구분하세요. 예: 10 2 1 3';
+  }
+}
+
+function renderOptionGrid() {
+  if (!currentRound) {
+    OPTION_GRID.innerHTML = '';
+    return;
+  }
+
+  OPTION_GRID.innerHTML = currentRound.options.map((option, index) => {
+    const media = option.image_url
+      ? `
+        <div class="telepathy-option-card__image">
+          <img src="${option.image_url}" alt="${option.name}">
+        </div>
+      `
+      : '';
+    const cardClass = option.image_url
+      ? 'telepathy-option-card'
+      : 'telepathy-option-card telepathy-option-card--text-only';
+
+    return `
+      <article class="${cardClass}">
+        <div class="telepathy-option-card__header">
+          <span class="rank-number">${index + 1}</span>
+          <div>
+            <div class="fw-semibold">${option.name}</div>
+            <div class="text-muted small">입력 번호 ${index + 1}</div>
+          </div>
+        </div>
+        ${media}
+      </article>
+    `;
+  }).join('');
 }
 
 function renderRound() {
@@ -119,14 +202,15 @@ function renderRound() {
         현재 진행 중인 텔레파시 라운드가 없습니다. 운영진이 라운드를 열면 새로고침해 주세요.
       </div>
     `;
-    RANK_WRAP.innerHTML = '';
-    SAVE_BTN.disabled = true;
+    renderInputPanel();
+    renderOptionGrid();
     return;
   }
 
   const roundPrompt = currentRound.prompt
     ? `<p class="text-muted mb-0">${currentRound.prompt}</p>`
-    : '<p class="text-muted mb-0">모든 선택지를 순위대로 정렬한 뒤 저장하세요.</p>';
+    : '<p class="text-muted mb-0">카드 번호를 보고 전체 순위를 입력해 주세요.</p>';
+
   ROUND_META.innerHTML = `
     <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
       <div>
@@ -137,29 +221,65 @@ function renderRound() {
     </div>
   `;
 
-  const optionMap = Object.fromEntries(currentRound.options.map(option => [option.id, option]));
-  if (ranking.some(optionId => !optionMap[optionId])) {
-    syncRankingFromRound();
-  }
-  RANK_WRAP.innerHTML = ranking.map((optionId, index) => optionCard(
-    optionMap[optionId],
-    index,
-    index > 0,
-    index < ranking.length - 1,
-  )).join('');
-  SAVE_BTN.disabled = !currentTeamId;
+  renderInputPanel();
+  renderOptionGrid();
 }
 
-function syncRankingFromRound(submissionRanking = null) {
-  const optionIds = currentRound.options.map(option => option.id);
-  if (submissionRanking && submissionRanking.length === optionIds.length && submissionRanking.every(optionId => optionIds.includes(optionId))) {
-    ranking = [...submissionRanking];
+function syncSequenceFromRound(submissionRanking = null) {
+  if (!currentRound) {
+    sequenceValue = '';
     return;
   }
-  if (ranking.length === optionIds.length && optionIds.every(optionId => ranking.includes(optionId))) {
+
+  const optionIds = currentRound.options.map((option) => option.id);
+  const isValidSubmission = submissionRanking
+    && submissionRanking.length === optionIds.length
+    && submissionRanking.every((optionId) => optionIds.includes(optionId));
+
+  if (isValidSubmission) {
+    sequenceValue = sequenceFromRanking(submissionRanking);
     return;
   }
-  ranking = optionIds;
+
+  sequenceValue = defaultSequenceForCurrentRound();
+}
+
+function parseSequence() {
+  if (!currentRound) {
+    throw new Error('현재 진행 중인 라운드가 없습니다.');
+  }
+
+  const raw = sequenceValue.trim();
+  if (!raw) {
+    throw new Error('순서를 입력해 주세요.');
+  }
+
+  const maxLabel = currentRound.options.length;
+  let labels = [];
+
+  if (/[,\s]/.test(raw)) {
+    labels = raw.split(/[\s,]+/).filter(Boolean).map((value) => Number(value));
+  } else if (maxLabel <= 9 && /^\d+$/.test(raw)) {
+    labels = raw.split('').map((value) => Number(value));
+  } else {
+    throw new Error('선택지가 10개 이상이면 공백이나 쉼표로 구분해서 입력해 주세요.');
+  }
+
+  if (labels.length !== maxLabel) {
+    throw new Error(`현재 라운드는 ${maxLabel}개의 번호를 모두 입력해야 합니다.`);
+  }
+
+  const uniqueLabels = new Set(labels);
+  if (uniqueLabels.size !== labels.length) {
+    throw new Error('번호는 중복 없이 한 번씩만 입력해 주세요.');
+  }
+
+  const invalidLabel = labels.find((label) => !Number.isInteger(label) || label < 1 || label > maxLabel);
+  if (invalidLabel) {
+    throw new Error(`입력할 수 없는 카드 번호입니다: ${invalidLabel}`);
+  }
+
+  return labels.map((label) => currentRound.options[label - 1].id);
 }
 
 async function loadState(force = false) {
@@ -167,21 +287,25 @@ async function loadState(force = false) {
   if (currentTeamId) {
     params.set('team_id', String(currentTeamId));
   }
+
   const response = await fetch(`/api/v1/public/recreation/telepathy/current?${params.toString()}`);
   const data = await response.json();
 
   renderTeamOptions(data.teams);
   const nextRound = data.active_round;
-  const roundChanged = !currentRound || !nextRound || currentRound.id !== nextRound.id;
+  const roundChanged = (currentRound?.id || null) !== (nextRound?.id || null);
   currentRound = nextRound;
 
-  if (currentRound && (force || roundChanged || !dirty)) {
-    syncRankingFromRound(data.submission ? data.submission.ranking : null);
+  if (!currentRound) {
+    sequenceValue = '';
+    dirty = false;
+  } else if (force || roundChanged || !dirty) {
+    syncSequenceFromRound(data.submission ? data.submission.ranking : null);
     dirty = false;
   }
 
   if (data.submission && !dirty) {
-    SAVE_STATUS.textContent = `마지막 저장: ${new Date(data.submission.updated_at).toLocaleTimeString('ko-KR')}`;
+    SAVE_STATUS.textContent = `마지막 제출 ${new Date(data.submission.updated_at).toLocaleTimeString('ko-KR')}`;
   } else if (dirty) {
     SAVE_STATUS.textContent = '저장되지 않은 변경사항이 있습니다.';
   } else {
@@ -193,11 +317,19 @@ async function loadState(force = false) {
 
 async function saveRanking() {
   if (!currentTeamId) {
-    alert('먼저 조를 선택하세요.');
+    alert('먼저 조를 선택해 주세요.');
     return;
   }
   if (!currentRound) {
     alert('현재 진행 중인 라운드가 없습니다.');
+    return;
+  }
+
+  let ranking;
+  try {
+    ranking = parseSequence();
+  } catch (error) {
+    alert(error.message);
     return;
   }
 
@@ -214,28 +346,15 @@ async function saveRanking() {
   if (!response.ok) {
     const error = await response.json();
     SAVE_BTN.disabled = false;
-    alert(error.detail || '저장에 실패했습니다.');
+    alert(error.detail || '제출에 실패했습니다.');
     return;
   }
 
   const result = await response.json();
   dirty = false;
-  SAVE_STATUS.textContent = `저장 완료: ${new Date(result.updated_at).toLocaleTimeString('ko-KR')}`;
+  SAVE_STATUS.textContent = `제출 완료: ${new Date(result.updated_at).toLocaleTimeString('ko-KR')}`;
   SAVE_BTN.disabled = false;
   await loadState(true);
-}
-
-function moveRanking(index, delta) {
-  const targetIndex = index + delta;
-  if (targetIndex < 0 || targetIndex >= ranking.length) {
-    return;
-  }
-  const nextRanking = [...ranking];
-  [nextRanking[index], nextRanking[targetIndex]] = [nextRanking[targetIndex], nextRanking[index]];
-  ranking = nextRanking;
-  dirty = true;
-  SAVE_STATUS.textContent = '저장되지 않은 변경사항이 있습니다.';
-  renderRound();
 }
 
 TEAM_SELECT.addEventListener('change', async (event) => {
@@ -243,6 +362,22 @@ TEAM_SELECT.addEventListener('change', async (event) => {
   updateUrlTeam(currentTeamId);
   dirty = false;
   await loadState(true);
+});
+
+SEQUENCE_INPUT.addEventListener('input', (event) => {
+  sequenceValue = event.target.value;
+  if (!currentRound) {
+    return;
+  }
+  dirty = true;
+  SAVE_STATUS.textContent = '저장되지 않은 변경사항이 있습니다.';
+});
+
+SEQUENCE_INPUT.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    saveRanking();
+  }
 });
 
 SAVE_BTN.addEventListener('click', saveRanking);

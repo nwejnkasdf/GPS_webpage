@@ -55,6 +55,67 @@
   gap: 0.85rem;
 }
 
+.telepathy-order-panel {
+  padding: 1rem;
+  border-radius: 1rem;
+  background: rgba(22, 50, 79, 0.05);
+  border: 1px solid rgba(22, 50, 79, 0.08);
+}
+
+.telepathy-sequence-input {
+  max-width: 420px;
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+}
+
+.telepathy-sequence-help {
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.telepathy-option-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.telepathy-option-card {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  background: #fff;
+  border: 1px solid rgba(22, 50, 79, 0.08);
+  box-shadow: 0 10px 28px rgba(11, 26, 45, 0.06);
+}
+
+.telepathy-option-card--text-only {
+  align-content: start;
+  min-height: 96px;
+}
+
+.telepathy-option-card__header {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.telepathy-option-card__image {
+  width: 100%;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(22, 50, 79, 0.08);
+  background: linear-gradient(180deg, rgba(47, 111, 176, 0.08), rgba(255, 255, 255, 0.95));
+  padding: 0.6rem;
+}
+
+.telepathy-option-card__image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.7rem;
+}
+
 .boj-stage {
   width: min(96vw, 1400px);
   margin-left: 50%;
@@ -498,6 +559,10 @@
 @media (max-width: 767px) {
   .rank-item,
   .sortable-item {
+    grid-template-columns: 1fr;
+  }
+
+  .telepathy-option-grid {
     grid-template-columns: 1fr;
   }
 
