@@ -4,14 +4,16 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from auth import AdminRequired, is_admin, require_admin_html
-from database import SessionLocal, ensure_club_info, get_db, init_db
+from database import SessionLocal, ensure_club_info, ensure_recreation_defaults, get_db, init_db
 from routers import auth as auth_router
 from routers.admin import attendance as admin_attendance
+from routers.admin import recreation as admin_recreation
 from routers.admin import members, sessions, weeks
 from routers.admin import club_info as club_info_router
 from routers.admin import club_images as club_images_router
 from routers.admin import announcements as announcements_router
 from routers.public import attendance as public_attendance
+from routers.public import recreation as public_recreation
 
 app = FastAPI(title="GPS 동아리", version="1.0.0")
 
@@ -25,6 +27,7 @@ def startup():
     db = SessionLocal()
     try:
         ensure_club_info(db)
+        ensure_recreation_defaults(db)
     finally:
         db.close()
 
@@ -42,7 +45,9 @@ app.include_router(sessions.router,              prefix=PREFIX, tags=["sessions"
 app.include_router(members.router,               prefix=PREFIX, tags=["members"])
 app.include_router(weeks.router,                 prefix=PREFIX, tags=["weeks"])
 app.include_router(admin_attendance.router,      prefix=PREFIX, tags=["attendance-admin"])
+app.include_router(admin_recreation.router,      prefix=PREFIX, tags=["recreation-admin"])
 app.include_router(public_attendance.router,     prefix=PREFIX, tags=["attendance-public"])
+app.include_router(public_recreation.router,     prefix=PREFIX, tags=["recreation-public"])
 app.include_router(club_info_router.router,      prefix=PREFIX, tags=["club-info"])
 app.include_router(club_images_router.router,    prefix=PREFIX, tags=["club-images"])
 app.include_router(announcements_router.router,  prefix=PREFIX, tags=["announcements"])
@@ -74,6 +79,58 @@ def home(request: Request):
 def index(request: Request):
     return templates.TemplateResponse(
         "public/index.html", {"request": request, "is_admin": is_admin(request)}
+    )
+
+
+@app.get("/recreation", response_class=HTMLResponse)
+def recreation_home(request: Request):
+    return templates.TemplateResponse(
+        "public/recreation.html",
+        {"request": request, "is_admin": is_admin(request)},
+    )
+
+
+@app.get("/recreation/telepathy/representative", response_class=HTMLResponse)
+def telepathy_representative_page(request: Request):
+    return templates.TemplateResponse(
+        "public/telepathy_player.html",
+        {
+            "request": request,
+            "is_admin": is_admin(request),
+            "role": "representative",
+            "role_label": "대표",
+            "page_title": "텔레파시 게임 대표 입력",
+        },
+    )
+
+
+@app.get("/recreation/telepathy/team", response_class=HTMLResponse)
+def telepathy_team_page(request: Request):
+    return templates.TemplateResponse(
+        "public/telepathy_player.html",
+        {
+            "request": request,
+            "is_admin": is_admin(request),
+            "role": "team",
+            "role_label": "팀",
+            "page_title": "텔레파시 게임 팀 입력",
+        },
+    )
+
+
+@app.get("/recreation/telepathy/display", response_class=HTMLResponse)
+def telepathy_display_page(request: Request):
+    return templates.TemplateResponse(
+        "public/telepathy_display.html",
+        {"request": request, "is_admin": is_admin(request)},
+    )
+
+
+@app.get("/recreation/boj-tier", response_class=HTMLResponse)
+def boj_tier_page(request: Request):
+    return templates.TemplateResponse(
+        "public/boj_tier.html",
+        {"request": request, "is_admin": is_admin(request)},
     )
 
 
@@ -110,6 +167,13 @@ def admin_images(request: Request):
 def admin_announcements(request: Request):
     return templates.TemplateResponse(
         "admin/announcements.html", {"request": request, "is_admin": True}
+    )
+
+
+@app.get("/admin/recreation", response_class=HTMLResponse, dependencies=[Depends(require_admin_html)])
+def admin_recreation_page(request: Request):
+    return templates.TemplateResponse(
+        "admin/recreation.html", {"request": request, "is_admin": True}
     )
 
 

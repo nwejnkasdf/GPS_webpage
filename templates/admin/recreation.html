@@ -1,0 +1,567 @@
+{% extends "base.html" %}
+{% block title %}레크리에이션 관리 - GPS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/recreation.css">
+{% endblock %}
+
+{% block content %}
+<section class="card recreation-hero mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+      <div>
+        <span class="badge text-bg-light mb-2">운영자 전용</span>
+        <h1 class="h3 fw-bold mb-2">레크리에이션 운영 대시보드</h1>
+        <p class="mb-0 text-white-50">텔레파시 라운드 세팅, 백준 문제 풀 관리, 랜덤 라운드 시작을 한 화면에서 처리합니다.</p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-light" href="/recreation">행사 허브</a>
+        <a class="btn btn-outline-light" href="/recreation/telepathy/display">텔레파시 현황판</a>
+        <a class="btn btn-outline-light" href="/recreation/boj-tier">백준 게임 화면</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<ul class="nav nav-tabs mb-4" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#telepathy-tab" type="button" role="tab">텔레파시 게임</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#boj-tab" type="button" role="tab">백준 티어 맞추기</button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="telepathy-tab" role="tabpanel">
+    <div class="row g-4">
+      <div class="col-12 col-xl-4">
+        <section class="card admin-card mb-4">
+          <div class="card-body">
+            <h2 class="h5 fw-bold mb-3">공용 링크</h2>
+            <div class="d-grid gap-2">
+              <a class="link-badge" href="/recreation/telepathy/representative" target="_blank"><i class="bi bi-box-arrow-up-right"></i>대표 화면</a>
+              <a class="link-badge" href="/recreation/telepathy/team" target="_blank"><i class="bi bi-box-arrow-up-right"></i>팀 화면</a>
+              <a class="link-badge" href="/recreation/telepathy/display" target="_blank"><i class="bi bi-box-arrow-up-right"></i>빔프로젝터 현황판</a>
+            </div>
+          </div>
+        </section>
+
+        <section class="card admin-card mb-4">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h2 class="h5 fw-bold mb-0">조 이름</h2>
+              <button class="btn btn-sm btn-primary" type="button" onclick="saveTelepathyTeams()">저장</button>
+            </div>
+            <div id="telepathy-team-list" class="compact-list"></div>
+          </div>
+        </section>
+
+        <section class="card admin-card">
+          <div class="card-body">
+            <h2 class="h5 fw-bold mb-3">새 라운드 만들기</h2>
+            <form id="telepathy-round-form" class="compact-list">
+              <div>
+                <label class="form-label">라운드 제목</label>
+                <input type="text" class="form-control" name="title" placeholder="예: 텔레파시 라운드 1" required>
+              </div>
+              <div>
+                <label class="form-label">설명</label>
+                <textarea class="form-control" name="prompt" rows="3" placeholder="주제나 진행 멘트를 적어두면 화면에 표시됩니다."></textarea>
+              </div>
+              <button class="btn btn-primary" type="submit">라운드 추가</button>
+            </form>
+          </div>
+        </section>
+      </div>
+
+      <div class="col-12 col-xl-8">
+        <section class="card admin-card">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h2 class="h5 fw-bold mb-0">라운드 목록</h2>
+              <button class="btn btn-outline-secondary btn-sm" type="button" onclick="loadTelepathyState()">새로고침</button>
+            </div>
+            <div id="telepathy-rounds" class="compact-list"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="boj-tab" role="tabpanel">
+    <div class="row g-4">
+      <div class="col-12 col-xl-4">
+        <section class="card admin-card mb-4">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h2 class="h5 fw-bold mb-0">문제 풀 등록</h2>
+              <a class="link-badge" href="/recreation/boj-tier" target="_blank"><i class="bi bi-box-arrow-up-right"></i>참가 화면</a>
+            </div>
+            <form id="boj-problem-form" class="compact-list">
+              <div>
+                <label class="form-label">문제 번호</label>
+                <input type="number" class="form-control" name="problem_number" required>
+              </div>
+              <div>
+                <label class="form-label">문제 이름 또는 메모</label>
+                <input type="text" class="form-control" name="title" placeholder="선택 사항">
+              </div>
+              <div>
+                <label class="form-label">난이도 (1~30)</label>
+                <input type="number" class="form-control" name="difficulty" min="1" max="30" required>
+              </div>
+              <div>
+                <label class="form-label">캡처 이미지</label>
+                <input type="file" class="form-control" name="image_file" accept="image/*">
+              </div>
+              <button class="btn btn-success" type="submit">문제 등록</button>
+            </form>
+          </div>
+        </section>
+
+        <section class="card admin-card">
+          <div class="card-body">
+            <h2 class="h5 fw-bold mb-3">랜덤 라운드 시작</h2>
+            <form id="boj-round-form" class="compact-list">
+              <div>
+                <label class="form-label">라운드 제목</label>
+                <input type="text" class="form-control" name="title" placeholder="비워두면 자동 생성">
+              </div>
+              <div>
+                <label class="form-label">문제 개수</label>
+                <input type="number" class="form-control" name="problem_count" min="2" max="10" value="4" required>
+              </div>
+              <button class="btn btn-primary" type="submit">랜덤 라운드 생성</button>
+            </form>
+          </div>
+        </section>
+      </div>
+
+      <div class="col-12 col-xl-8">
+        <section class="card admin-card mb-4">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h2 class="h5 fw-bold mb-0">문제 풀</h2>
+              <button class="btn btn-outline-secondary btn-sm" type="button" onclick="loadBojState()">새로고침</button>
+            </div>
+            <div id="boj-pool-list" class="compact-list"></div>
+          </div>
+        </section>
+
+        <section class="card admin-card">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h2 class="h5 fw-bold mb-0">라운드 기록</h2>
+              <span class="text-muted small">활성 라운드는 참가 화면에 즉시 반영됩니다.</span>
+            </div>
+            <div id="boj-rounds" class="compact-list"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let telepathyState = null;
+let bojState = null;
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    let detail = '요청 처리에 실패했습니다.';
+    try {
+      const error = await response.json();
+      detail = error.detail || detail;
+    } catch {}
+    throw new Error(detail);
+  }
+  if (response.status === 204) {
+    return null;
+  }
+  return response.json();
+}
+
+function telepathyBadge(round) {
+  if (round.is_active) {
+    return '<span class="badge text-bg-primary">진행 중</span>';
+  }
+  if (round.is_revealed) {
+    return '<span class="badge text-bg-success">공개 완료</span>';
+  }
+  return '<span class="badge text-bg-secondary">준비 중</span>';
+}
+
+function renderTelepathyState() {
+  const teamList = document.getElementById('telepathy-team-list');
+  const roundList = document.getElementById('telepathy-rounds');
+
+  if (!telepathyState) {
+    teamList.innerHTML = '<p class="text-muted mb-0">불러오는 중...</p>';
+    roundList.innerHTML = '<p class="text-muted mb-0">불러오는 중...</p>';
+    return;
+  }
+
+  teamList.innerHTML = telepathyState.teams.map(team => `
+    <div>
+      <label class="form-label small text-muted">조 ${team.display_order}</label>
+      <input class="form-control" data-team-id="${team.id}" value="${team.name}">
+    </div>
+  `).join('');
+
+  if (!telepathyState.rounds.length) {
+    roundList.innerHTML = '<p class="text-muted mb-0">등록된 라운드가 없습니다.</p>';
+    return;
+  }
+
+  roundList.innerHTML = telepathyState.rounds.map(round => `
+    <article class="card border-0 bg-light">
+      <div class="card-body">
+        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+          <div>
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <h3 class="h5 fw-bold mb-0">${round.title}</h3>
+              ${telepathyBadge(round)}
+            </div>
+            <p class="text-muted mb-0">${round.prompt || '라운드 설명 없음'}</p>
+          </div>
+          <div class="round-admin-actions">
+            <button class="btn btn-sm btn-primary" type="button" onclick="activateTelepathyRound(${round.id})">진행 시작</button>
+            <button class="btn btn-sm btn-success" type="button" onclick="revealTelepathyRound(${round.id})">결과 공개</button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" onclick="resetTelepathyRound(${round.id})">제출 초기화</button>
+            <button class="btn btn-sm btn-outline-danger" type="button" onclick="deleteTelepathyRound(${round.id})">삭제</button>
+          </div>
+        </div>
+
+        <form class="row g-2 align-items-end mb-3" onsubmit="addTelepathyOption(event, ${round.id})">
+          <div class="col-md-4">
+            <label class="form-label">선택지 이름</label>
+            <input type="text" class="form-control" name="name" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">이미지 업로드</label>
+            <input type="file" class="form-control" name="image_file" accept="image/*">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">이미지 URL</label>
+            <input type="url" class="form-control" name="image_url" placeholder="선택 사항">
+          </div>
+          <div class="col-md-1">
+            <button class="btn btn-outline-primary w-100" type="submit">추가</button>
+          </div>
+        </form>
+
+        <div class="compact-list">
+          ${round.options.length ? round.options.map(option => `
+            <div class="d-flex justify-content-between align-items-center gap-3 p-2 border rounded-3 bg-white">
+              <div class="d-flex align-items-center gap-3">
+                <div class="option-thumb">
+                  ${option.image_url ? `<img src="${option.image_url}" alt="${option.name}">` : '<div class="w-100 h-100 d-flex align-items-center justify-content-center text-muted"><i class="bi bi-image"></i></div>'}
+                </div>
+                <div>
+                  <div class="fw-semibold">${option.name}</div>
+                  <div class="text-muted small">선택지 ID ${option.id}</div>
+                </div>
+              </div>
+              <button class="btn btn-sm btn-outline-danger" type="button" onclick="deleteTelepathyOption(${option.id})">삭제</button>
+            </div>
+          `).join('') : '<p class="text-muted mb-0">아직 선택지가 없습니다.</p>'}
+        </div>
+      </div>
+    </article>
+  `).join('');
+}
+
+function renderBojState() {
+  const poolList = document.getElementById('boj-pool-list');
+  const roundList = document.getElementById('boj-rounds');
+
+  if (!bojState) {
+    poolList.innerHTML = '<p class="text-muted mb-0">불러오는 중...</p>';
+    roundList.innerHTML = '<p class="text-muted mb-0">불러오는 중...</p>';
+    return;
+  }
+
+  if (!bojState.pool_problems.length) {
+    poolList.innerHTML = '<p class="text-muted mb-0">등록된 문제가 없습니다.</p>';
+  } else {
+    poolList.innerHTML = bojState.pool_problems.map(problem => `
+      <div class="d-flex justify-content-between align-items-center gap-3 p-3 border rounded-3 bg-light">
+        <div class="d-flex align-items-center gap-3">
+          <div class="option-thumb">
+            ${problem.image_url ? `<img src="${problem.image_url}" alt="${problem.problem_number}">` : '<div class="w-100 h-100 d-flex align-items-center justify-content-center text-muted"><i class="bi bi-card-image"></i></div>'}
+          </div>
+          <div>
+            <div class="fw-semibold">문제 ${problem.problem_number}</div>
+            <div class="text-muted small">${problem.title || '제목 없음'}</div>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="difficulty-pill difficulty-${problem.difficulty_tier}">${problem.difficulty_label}</span>
+          <button class="btn btn-sm btn-outline-danger" type="button" onclick="deleteBojProblem(${problem.id})">삭제</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  if (!bojState.rounds.length) {
+    roundList.innerHTML = '<p class="text-muted mb-0">라운드 기록이 없습니다.</p>';
+    return;
+  }
+
+  roundList.innerHTML = bojState.rounds.map(round => `
+    <article class="card border-0 bg-light">
+      <div class="card-body">
+        <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+          <div>
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <h3 class="h5 fw-bold mb-0">${round.title}</h3>
+              ${round.is_active ? '<span class="badge text-bg-primary">활성</span>' : '<span class="badge text-bg-secondary">비활성</span>'}
+              <span class="badge ${round.last_result_status === 'passed' ? 'text-bg-success' : round.last_result_status === 'failed' ? 'text-bg-danger' : 'text-bg-secondary'}">
+                ${round.last_result_status === 'passed' ? '최근 결과: 통과' : round.last_result_status === 'failed' ? '최근 결과: 실패' : '최근 결과 없음'}
+              </span>
+            </div>
+            <div class="text-muted small">${round.problems.length}문제 구성</div>
+          </div>
+          <div class="round-admin-actions">
+            <button class="btn btn-sm btn-primary" type="button" onclick="activateBojRound(${round.id})">활성화</button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" onclick="resetBojRound(${round.id})">판정 초기화</button>
+            <button class="btn btn-sm btn-outline-danger" type="button" onclick="deleteBojRound(${round.id})">삭제</button>
+          </div>
+        </div>
+        <div class="compact-list">
+          ${round.problems.map(problem => `
+            <div class="d-flex justify-content-between align-items-center gap-3 p-2 border rounded-3 bg-white">
+              <div class="d-flex align-items-center gap-3">
+                <div class="option-thumb">
+                  ${problem.image_url ? `<img src="${problem.image_url}" alt="${problem.problem_number}">` : '<div class="w-100 h-100 d-flex align-items-center justify-content-center text-muted"><i class="bi bi-card-image"></i></div>'}
+                </div>
+                <div>
+                  <div class="fw-semibold">문제 ${problem.problem_number}</div>
+                  <div class="text-muted small">${problem.title || '제목 없음'}</div>
+                </div>
+              </div>
+              <span class="difficulty-pill difficulty-${problem.difficulty_tier}">${problem.difficulty_label}</span>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </article>
+  `).join('');
+}
+
+async function loadTelepathyState() {
+  telepathyState = await requestJson('/api/v1/recreation/telepathy/admin/state');
+  renderTelepathyState();
+}
+
+async function loadBojState() {
+  bojState = await requestJson('/api/v1/recreation/boj/admin/state');
+  renderBojState();
+}
+
+async function loadAllStates() {
+  try {
+    const [telepathy, boj] = await Promise.all([
+      requestJson('/api/v1/recreation/telepathy/admin/state'),
+      requestJson('/api/v1/recreation/boj/admin/state'),
+    ]);
+    telepathyState = telepathy;
+    bojState = boj;
+    renderTelepathyState();
+    renderBojState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function saveTelepathyTeams() {
+  try {
+    const inputs = [...document.querySelectorAll('#telepathy-team-list input[data-team-id]')];
+    await requestJson('/api/v1/recreation/telepathy/teams', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        teams: inputs.map(input => ({
+          id: Number(input.dataset.teamId),
+          name: input.value,
+        })),
+      }),
+    });
+    await loadTelepathyState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+document.getElementById('telepathy-round-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  try {
+    await requestJson('/api/v1/recreation/telepathy/rounds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: form.title.value,
+        prompt: form.prompt.value,
+      }),
+    });
+    form.reset();
+    await loadTelepathyState();
+  } catch (error) {
+    alert(error.message);
+  }
+});
+
+async function addTelepathyOption(event, roundId) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  try {
+    await requestJson(`/api/v1/recreation/telepathy/rounds/${roundId}/options`, {
+      method: 'POST',
+      body: new FormData(form),
+    });
+    form.reset();
+    await loadTelepathyState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function activateTelepathyRound(roundId) {
+  try {
+    await requestJson(`/api/v1/recreation/telepathy/rounds/${roundId}/activate`, { method: 'POST' });
+    await loadTelepathyState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function revealTelepathyRound(roundId) {
+  try {
+    await requestJson(`/api/v1/recreation/telepathy/rounds/${roundId}/reveal`, { method: 'POST' });
+    await loadTelepathyState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function resetTelepathyRound(roundId) {
+  if (!confirm('이 라운드의 제출 기록을 모두 지울까요?')) {
+    return;
+  }
+  try {
+    await requestJson(`/api/v1/recreation/telepathy/rounds/${roundId}/reset`, { method: 'POST' });
+    await loadTelepathyState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function deleteTelepathyRound(roundId) {
+  if (!confirm('이 라운드를 삭제할까요?')) {
+    return;
+  }
+  try {
+    await requestJson(`/api/v1/recreation/telepathy/rounds/${roundId}`, { method: 'DELETE' });
+    await loadTelepathyState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function deleteTelepathyOption(optionId) {
+  if (!confirm('이 선택지를 삭제할까요?')) {
+    return;
+  }
+  try {
+    await requestJson(`/api/v1/recreation/telepathy/options/${optionId}`, { method: 'DELETE' });
+    await loadTelepathyState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+document.getElementById('boj-problem-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  try {
+    await requestJson('/api/v1/recreation/boj/problems', {
+      method: 'POST',
+      body: new FormData(form),
+    });
+    form.reset();
+    await loadBojState();
+  } catch (error) {
+    alert(error.message);
+  }
+});
+
+document.getElementById('boj-round-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  try {
+    await requestJson('/api/v1/recreation/boj/rounds', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: form.title.value,
+        problem_count: Number(form.problem_count.value),
+      }),
+    });
+    form.reset();
+    form.problem_count.value = 4;
+    await loadBojState();
+  } catch (error) {
+    alert(error.message);
+  }
+});
+
+async function deleteBojProblem(problemId) {
+  if (!confirm('이 문제를 문제 풀에서 삭제할까요?')) {
+    return;
+  }
+  try {
+    await requestJson(`/api/v1/recreation/boj/problems/${problemId}`, { method: 'DELETE' });
+    await loadBojState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function activateBojRound(roundId) {
+  try {
+    await requestJson(`/api/v1/recreation/boj/rounds/${roundId}/activate`, { method: 'POST' });
+    await loadBojState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function resetBojRound(roundId) {
+  try {
+    await requestJson(`/api/v1/recreation/boj/rounds/${roundId}/reset`, { method: 'POST' });
+    await loadBojState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+async function deleteBojRound(roundId) {
+  if (!confirm('이 라운드를 삭제할까요?')) {
+    return;
+  }
+  try {
+    await requestJson(`/api/v1/recreation/boj/rounds/${roundId}`, { method: 'DELETE' });
+    await loadBojState();
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+loadAllStates();
+</script>
+{% endblock %}

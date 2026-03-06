@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% block title %}텔레파시 현황판 - GPS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/recreation.css">
+{% endblock %}
+
+{% block content %}
+<section class="card recreation-hero mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+      <div>
+        <span class="badge text-bg-light mb-2">빔프로젝터 화면</span>
+        <h1 class="h3 fw-bold mb-2">텔레파시 게임 현황판</h1>
+        <p class="mb-0 text-white-50">대표 제출 여부, 팀 제출 여부, 공개된 라운드의 점수와 누적 순위를 실시간으로 보여줍니다.</p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-light" href="/recreation">허브</a>
+        <a class="btn btn-outline-light" href="/recreation/telepathy/representative">대표 화면</a>
+        <a class="btn btn-outline-light" href="/recreation/telepathy/team">팀 화면</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="row g-4">
+  <div class="col-12 col-xl-4">
+    <section class="card board-card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 class="h4 fw-bold mb-0">누적 순위</h2>
+          <span class="text-muted small">공개된 라운드 기준</span>
+        </div>
+        <div id="scoreboard-wrap"></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="col-12 col-xl-8">
+    <section class="card board-card mb-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 class="h4 fw-bold mb-0">현재 라운드</h2>
+          <span class="text-muted small" id="active-round-updated"></span>
+        </div>
+        <div id="active-round-wrap"></div>
+      </div>
+    </section>
+
+    <section class="card board-card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h2 class="h4 fw-bold mb-0">공개된 라운드 기록</h2>
+          <span class="text-muted small">최신 라운드부터 표시</span>
+        </div>
+        <div id="revealed-rounds-wrap" class="compact-list"></div>
+      </div>
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const SCOREBOARD_WRAP = document.getElementById('scoreboard-wrap');
+const ACTIVE_ROUND_WRAP = document.getElementById('active-round-wrap');
+const REVEALED_ROUNDS_WRAP = document.getElementById('revealed-rounds-wrap');
+const ACTIVE_ROUND_UPDATED = document.getElementById('active-round-updated');
+
+function renderScoreboard(scoreboard) {
+  if (!scoreboard.length) {
+    SCOREBOARD_WRAP.innerHTML = '<p class="text-muted mb-0">아직 공개된 점수가 없습니다.</p>';
+    return;
+  }
+  SCOREBOARD_WRAP.innerHTML = `
+    <div class="table-responsive">
+      <table class="table align-middle scoreboard-table mb-0">
+        <thead>
+          <tr>
+            <th>순위</th>
+            <th>조</th>
+            <th class="text-end">누적 점수</th>
+            <th class="text-end">반영 라운드</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${scoreboard.map(row => `
+            <tr>
+              <td class="fw-bold">${row.rank}</td>
+              <td>${row.team_name}</td>
+              <td class="text-end fw-semibold">${row.total_score}</td>
+              <td class="text-end text-muted">${row.completed_rounds}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderSubmissionStatus(result) {
+  const representativeClass = result.representative_complete ? 'ok' : (result.representative_submitted ? 'waiting' : 'bad');
+  const teamClass = result.team_complete ? 'ok' : (result.team_submitted ? 'waiting' : 'bad');
+  const representativeText = result.representative_complete ? '대표 제출 완료' : (result.representative_submitted ? '대표 제출 중' : '대표 미제출');
+  const teamText = result.team_complete ? '팀 제출 완료' : (result.team_submitted ? '팀 제출 중' : '팀 미제출');
+  return `
+    <div class="d-flex flex-column gap-2">
+      <span class="board-status ${representativeClass}">${representativeText}</span>
+      <span class="board-status ${teamClass}">${teamText}</span>
+    </div>
+  `;
+}
+
+function renderRankingPills(submission) {
+  if (!submission || !submission.ranking.length) {
+    return '<p class="text-muted small mb-0">아직 제출되지 않았습니다.</p>';
+  }
+  return `
+    <div class="ranking-pill-list">
+      ${submission.ranking.map(item => `
+        <span class="ranking-pill"><strong>${item.rank}</strong>${item.name}</span>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderActiveRound(round) {
+  if (!round) {
+    ACTIVE_ROUND_WRAP.innerHTML = '<div class="alert alert-secondary mb-0">현재 열려 있는 라운드가 없습니다.</div>';
+    ACTIVE_ROUND_UPDATED.textContent = '';
+    return;
+  }
+  ACTIVE_ROUND_UPDATED.textContent = round.updated_at ? `업데이트 ${new Date(round.updated_at).toLocaleTimeString('ko-KR')}` : '';
+  ACTIVE_ROUND_WRAP.innerHTML = `
+    <div class="mb-3">
+      <h3 class="h5 fw-bold mb-1">${round.title}</h3>
+      <p class="text-muted mb-2">${round.prompt || '대표와 팀이 같은 선택지를 모두 순위로 정렬합니다.'}</p>
+      <div class="ranking-pill-list">
+        ${round.options.map(option => `<span class="ranking-pill">${option.name}</span>`).join('')}
+      </div>
+    </div>
+    <div class="board-grid">
+      ${round.results.map(result => `
+        <article class="card border-0 bg-light">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+              <div>
+                <h4 class="h6 fw-bold mb-1">${result.team_name}</h4>
+                <div class="text-muted small">현재 제출 상태</div>
+              </div>
+              ${result.round_score !== null ? `<span class="badge text-bg-primary">예상 점수 ${result.round_score}</span>` : ''}
+            </div>
+            ${renderSubmissionStatus(result)}
+          </div>
+        </article>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderRevealedRounds(rounds) {
+  const revealedRounds = rounds.filter(round => round.is_revealed);
+  if (!revealedRounds.length) {
+    REVEALED_ROUNDS_WRAP.innerHTML = '<p class="text-muted mb-0">아직 공개된 라운드가 없습니다.</p>';
+    return;
+  }
+
+  REVEALED_ROUNDS_WRAP.innerHTML = revealedRounds.map(round => `
+    <article class="card border-0 bg-light">
+      <div class="card-body">
+        <div class="d-flex flex-column flex-lg-row justify-content-between gap-2 mb-3">
+          <div>
+            <h3 class="h5 fw-bold mb-1">${round.title}</h3>
+            <p class="text-muted mb-0">${round.prompt || '라운드 설명이 없습니다.'}</p>
+          </div>
+          <span class="badge text-bg-success align-self-start">공개 완료</span>
+        </div>
+        <div class="team-result-grid">
+          ${round.results.map(result => `
+            <section class="card border-0 shadow-sm">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <h4 class="h6 fw-bold mb-0">${result.team_name}</h4>
+                  <span class="badge text-bg-dark">${result.round_score !== null ? `${result.round_score}점` : '미완료'}</span>
+                </div>
+                <div class="mb-3">
+                  <div class="fw-semibold small mb-2">대표 순위</div>
+                  ${renderRankingPills(result.representative)}
+                </div>
+                <div>
+                  <div class="fw-semibold small mb-2">팀 추측 순위</div>
+                  ${renderRankingPills(result.team)}
+                </div>
+              </div>
+            </section>
+          `).join('')}
+        </div>
+      </div>
+    </article>
+  `).join('');
+}
+
+async function loadDisplay() {
+  const response = await fetch('/api/v1/public/recreation/telepathy/display');
+  const data = await response.json();
+  renderScoreboard(data.scoreboard);
+  renderActiveRound(data.active_round);
+  renderRevealedRounds(data.rounds);
+}
+
+loadDisplay();
+setInterval(loadDisplay, 2500);
+</script>
+{% endblock %}

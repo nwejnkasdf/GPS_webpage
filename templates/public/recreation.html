@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}레크리에이션 - GPS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/recreation.css">
+{% endblock %}
+
+{% block content %}
+<section class="card recreation-hero mb-4">
+  <div class="card-body p-4 p-lg-5">
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-4 align-items-lg-center">
+      <div>
+        <span class="badge text-bg-warning mb-3">MT 이벤트</span>
+        <h1 class="h2 fw-bold mb-3">레크리에이션 진행 허브</h1>
+        <p class="mb-0 text-white-50">
+          모바일에서는 텔레파시 게임에 접속하고, 노트북에서는 백준 티어 맞추기를 진행하면 됩니다.
+        </p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-light" href="/recreation/telepathy/display">
+          <i class="bi bi-display me-1"></i>현황판
+        </a>
+        <a class="btn btn-outline-light" href="/recreation/boj-tier">
+          <i class="bi bi-controller me-1"></i>백준 게임
+        </a>
+        {% if is_admin %}
+        <a class="btn btn-outline-warning" href="/admin/recreation">
+          <i class="bi bi-sliders me-1"></i>운영자 화면
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="portal-grid">
+  <article class="card portal-card">
+    <div class="card-body">
+      <div class="portal-icon mb-3"><i class="bi bi-people-fill"></i></div>
+      <h2 class="h4 fw-bold mb-2">텔레파시 게임</h2>
+      <p class="text-muted mb-4">
+        대표는 전체 순위를 정하고, 팀은 대표의 순위를 토의해서 예측합니다. 라운드별 오차 합계가 낮을수록 유리합니다.
+      </p>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-primary" href="/recreation/telepathy/representative">대표 화면</a>
+        <a class="btn btn-outline-primary" href="/recreation/telepathy/team">팀 화면</a>
+        <a class="btn btn-outline-secondary" href="/recreation/telepathy/display">빔프로젝터 현황</a>
+      </div>
+    </div>
+  </article>
+
+  <article class="card portal-card">
+    <div class="card-body">
+      <div class="portal-icon mb-3"><i class="bi bi-trophy-fill"></i></div>
+      <h2 class="h4 fw-bold mb-2">백준 티어 맞추기</h2>
+      <p class="text-muted mb-4">
+        운영진이 미리 등록한 문제 캡처를 보고 난이도 오름차순으로 정렬하면 됩니다. 정답이면 통과 효과, 오답이면 건배 효과가 재생됩니다.
+      </p>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-success" href="/recreation/boj-tier">게임 시작</a>
+        {% if is_admin %}
+        <a class="btn btn-outline-success" href="/admin/recreation">문제풀 관리</a>
+        {% endif %}
+      </div>
+    </div>
+  </article>
+</section>
+{% endblock %}

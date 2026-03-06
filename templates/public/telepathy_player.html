@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }} - GPS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/recreation.css">
+{% endblock %}
+
+{% block content %}
+<section class="card recreation-hero mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+      <div>
+        <span class="badge text-bg-light mb-2">{{ role_label }} 화면</span>
+        <h1 class="h3 fw-bold mb-2">{{ page_title }}</h1>
+        <p class="mb-0 text-white-50">
+          현재 진행 중인 라운드의 모든 선택지를 순위대로 정렬한 뒤 저장하세요.
+        </p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-light" href="/recreation">허브로 돌아가기</a>
+        <a class="btn btn-outline-light" href="/recreation/telepathy/display">현황판 보기</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="player-shell">
+  <section class="card rank-card">
+    <div class="card-body">
+      <div class="row g-3 align-items-end mb-3">
+        <div class="col-md-4">
+          <label class="form-label fw-semibold" for="team-select">조 선택</label>
+          <select id="team-select" class="form-select"></select>
+        </div>
+        <div class="col-md-8">
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <button class="btn btn-primary" id="save-btn" type="button">
+              <i class="bi bi-check2-circle me-1"></i>순위 저장
+            </button>
+            <button class="btn btn-outline-secondary" id="reload-btn" type="button">
+              <i class="bi bi-arrow-clockwise me-1"></i>새로고침
+            </button>
+            <span id="save-status" class="text-muted small"></span>
+          </div>
+        </div>
+      </div>
+
+      <div id="round-meta" class="mb-3"></div>
+      <div id="rank-wrap" class="rank-list"></div>
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ROLE = "{{ role }}";
+const ROLE_LABEL = "{{ role_label }}";
+const TEAM_SELECT = document.getElementById('team-select');
+const RANK_WRAP = document.getElementById('rank-wrap');
+const ROUND_META = document.getElementById('round-meta');
+const SAVE_STATUS = document.getElementById('save-status');
+const SAVE_BTN = document.getElementById('save-btn');
+const RELOAD_BTN = document.getElementById('reload-btn');
+
+let currentTeamId = Number(new URLSearchParams(window.location.search).get('team_id')) || null;
+let currentRound = null;
+let ranking = [];
+let dirty = false;
+
+function updateUrlTeam(teamId) {
+  const url = new URL(window.location.href);
+  if (teamId) {
+    url.searchParams.set('team_id', String(teamId));
+  } else {
+    url.searchParams.delete('team_id');
+  }
+  history.replaceState({}, '', url);
+}
+
+function optionCard(option, index, canMoveUp, canMoveDown) {
+  const media = option.image_url
+    ? `<div class="rank-media"><img src="${option.image_url}" alt="${option.name}"></div>`
+    : `<div class="rank-media"><span class="rank-placeholder"><i class="bi bi-image"></i></span></div>`;
+  return `
+    <div class="rank-item">
+      <div class="d-flex align-items-center gap-3">
+        <span class="rank-number">${index + 1}</span>
+        ${media}
+      </div>
+      <div>
+        <div class="fw-semibold">${option.name}</div>
+        <div class="text-muted small">${ROLE_LABEL}의 ${index + 1}순위</div>
+      </div>
+      <div class="rank-controls">
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="moveRanking(${index}, -1)" ${canMoveUp ? '' : 'disabled'}>
+          <i class="bi bi-arrow-up"></i>
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="moveRanking(${index}, 1)" ${canMoveDown ? '' : 'disabled'}>
+          <i class="bi bi-arrow-down"></i>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function renderTeamOptions(teams) {
+  const selectedId = currentTeamId && teams.some(team => team.id === currentTeamId) ? currentTeamId : '';
+  TEAM_SELECT.innerHTML = `
+    <option value="">조를 선택하세요</option>
+    ${teams.map(team => `<option value="${team.id}" ${selectedId === team.id ? 'selected' : ''}>${team.name}</option>`).join('')}
+  `;
+}
+
+function renderRound() {
+  if (!currentRound) {
+    ROUND_META.innerHTML = `
+      <div class="alert alert-secondary mb-0">
+        현재 진행 중인 텔레파시 라운드가 없습니다. 운영진이 라운드를 열면 새로고침해 주세요.
+      </div>
+    `;
+    RANK_WRAP.innerHTML = '';
+    SAVE_BTN.disabled = true;
+    return;
+  }
+
+  const roundPrompt = currentRound.prompt
+    ? `<p class="text-muted mb-0">${currentRound.prompt}</p>`
+    : '<p class="text-muted mb-0">모든 선택지를 순위대로 정렬한 뒤 저장하세요.</p>';
+  ROUND_META.innerHTML = `
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+      <div>
+        <h2 class="h4 fw-bold mb-1">${currentRound.title}</h2>
+        ${roundPrompt}
+      </div>
+      <div class="text-muted small">선택지 ${currentRound.options.length}개</div>
+    </div>
+  `;
+
+  const optionMap = Object.fromEntries(currentRound.options.map(option => [option.id, option]));
+  if (ranking.some(optionId => !optionMap[optionId])) {
+    syncRankingFromRound();
+  }
+  RANK_WRAP.innerHTML = ranking.map((optionId, index) => optionCard(
+    optionMap[optionId],
+    index,
+    index > 0,
+    index < ranking.length - 1,
+  )).join('');
+  SAVE_BTN.disabled = !currentTeamId;
+}
+
+function syncRankingFromRound(submissionRanking = null) {
+  const optionIds = currentRound.options.map(option => option.id);
+  if (submissionRanking && submissionRanking.length === optionIds.length && submissionRanking.every(optionId => optionIds.includes(optionId))) {
+    ranking = [...submissionRanking];
+    return;
+  }
+  if (ranking.length === optionIds.length && optionIds.every(optionId => ranking.includes(optionId))) {
+    return;
+  }
+  ranking = optionIds;
+}
+
+async function loadState(force = false) {
+  const params = new URLSearchParams({ role: ROLE });
+  if (currentTeamId) {
+    params.set('team_id', String(currentTeamId));
+  }
+  const response = await fetch(`/api/v1/public/recreation/telepathy/current?${params.toString()}`);
+  const data = await response.json();
+
+  renderTeamOptions(data.teams);
+  const nextRound = data.active_round;
+  const roundChanged = !currentRound || !nextRound || currentRound.id !== nextRound.id;
+  currentRound = nextRound;
+
+  if (currentRound && (force || roundChanged || !dirty)) {
+    syncRankingFromRound(data.submission ? data.submission.ranking : null);
+    dirty = false;
+  }
+
+  if (data.submission && !dirty) {
+    SAVE_STATUS.textContent = `마지막 저장: ${new Date(data.submission.updated_at).toLocaleTimeString('ko-KR')}`;
+  } else if (dirty) {
+    SAVE_STATUS.textContent = '저장되지 않은 변경사항이 있습니다.';
+  } else {
+    SAVE_STATUS.textContent = '';
+  }
+
+  renderRound();
+}
+
+async function saveRanking() {
+  if (!currentTeamId) {
+    alert('먼저 조를 선택하세요.');
+    return;
+  }
+  if (!currentRound) {
+    alert('현재 진행 중인 라운드가 없습니다.');
+    return;
+  }
+
+  SAVE_BTN.disabled = true;
+  const response = await fetch(`/api/v1/public/recreation/telepathy/submissions/${ROLE}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      team_id: currentTeamId,
+      ranking,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    SAVE_BTN.disabled = false;
+    alert(error.detail || '저장에 실패했습니다.');
+    return;
+  }
+
+  const result = await response.json();
+  dirty = false;
+  SAVE_STATUS.textContent = `저장 완료: ${new Date(result.updated_at).toLocaleTimeString('ko-KR')}`;
+  SAVE_BTN.disabled = false;
+  await loadState(true);
+}
+
+function moveRanking(index, delta) {
+  const targetIndex = index + delta;
+  if (targetIndex < 0 || targetIndex >= ranking.length) {
+    return;
+  }
+  const nextRanking = [...ranking];
+  [nextRanking[index], nextRanking[targetIndex]] = [nextRanking[targetIndex], nextRanking[index]];
+  ranking = nextRanking;
+  dirty = true;
+  SAVE_STATUS.textContent = '저장되지 않은 변경사항이 있습니다.';
+  renderRound();
+}
+
+TEAM_SELECT.addEventListener('change', async (event) => {
+  currentTeamId = Number(event.target.value) || null;
+  updateUrlTeam(currentTeamId);
+  dirty = false;
+  await loadState(true);
+});
+
+SAVE_BTN.addEventListener('click', saveRanking);
+RELOAD_BTN.addEventListener('click', () => loadState(true));
+
+loadState(true);
+setInterval(() => loadState(false), 5000);
+</script>
+{% endblock %}

@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}백준 티어 맞추기 - GPS{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="/static/css/recreation.css">
+{% endblock %}
+
+{% block content %}
+<section class="card recreation-hero mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+      <div>
+        <span class="badge text-bg-light mb-2">노트북 게임</span>
+        <h1 class="h3 fw-bold mb-2">백준 티어 맞추기</h1>
+        <p class="mb-0 text-white-50">문제 캡처들을 난이도 오름차순으로 정렬한 뒤 제출하세요. 같은 난이도끼리는 순서가 바뀌어도 정답으로 처리됩니다.</p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-light" href="/recreation">허브</a>
+        {% if is_admin %}
+        <a class="btn btn-outline-light" href="/admin/recreation">운영자 화면</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="card board-card">
+  <div class="card-body">
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center mb-3">
+      <div>
+        <h2 id="round-title" class="h4 fw-bold mb-1">라운드 대기 중</h2>
+        <p id="round-meta" class="text-muted mb-0">운영자가 라운드를 시작하면 문제가 표시됩니다.</p>
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <button class="btn btn-outline-secondary" id="shuffle-view-btn" type="button">
+          <i class="bi bi-arrow-repeat me-1"></i>현재 순서 다시 보기
+        </button>
+        <button class="btn btn-success" id="submit-btn" type="button">
+          <i class="bi bi-check2-circle me-1"></i>제출하기
+        </button>
+      </div>
+    </div>
+    <div id="boj-list" class="boj-sort-list"></div>
+  </div>
+</section>
+
+<div id="effect-overlay" class="effect-overlay" role="dialog" aria-live="assertive" aria-modal="true">
+  <div class="effect-panel">
+    <div id="effect-content"></div>
+    <button class="btn btn-outline-dark mt-3" type="button" onclick="hideEffect()">닫기</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ROUND_TITLE = document.getElementById('round-title');
+const ROUND_META = document.getElementById('round-meta');
+const BOJ_LIST = document.getElementById('boj-list');
+const EFFECT_OVERLAY = document.getElementById('effect-overlay');
+const EFFECT_CONTENT = document.getElementById('effect-content');
+const SUBMIT_BTN = document.getElementById('submit-btn');
+const SHUFFLE_VIEW_BTN = document.getElementById('shuffle-view-btn');
+
+let currentRound = null;
+let orderedProblemIds = [];
+let draggedProblemId = null;
+let isDirtyOrder = false;
+let audioContext = null;
+
+function renderProblems() {
+  if (!currentRound) {
+    ROUND_TITLE.textContent = '라운드 대기 중';
+    ROUND_META.textContent = '운영자가 라운드를 시작하면 문제가 표시됩니다.';
+    BOJ_LIST.innerHTML = '<div class="alert alert-secondary mb-0">현재 진행 중인 라운드가 없습니다.</div>';
+    SUBMIT_BTN.disabled = true;
+    SHUFFLE_VIEW_BTN.disabled = true;
+    return;
+  }
+
+  ROUND_TITLE.textContent = currentRound.title;
+  ROUND_META.textContent = `${currentRound.problems.length}개의 문제를 난이도 오름차순으로 정렬하세요.`;
+  SUBMIT_BTN.disabled = false;
+  SHUFFLE_VIEW_BTN.disabled = false;
+
+  const problemMap = Object.fromEntries(currentRound.problems.map(problem => [problem.id, problem]));
+  BOJ_LIST.innerHTML = orderedProblemIds.map((problemId, index) => {
+    const problem = problemMap[problemId];
+    const media = problem.image_url
+      ? `<div class="boj-media"><img src="${problem.image_url}" alt="${problem.problem_number}"></div>`
+      : `<div class="boj-media"><span class="boj-placeholder"><i class="bi bi-card-image"></i></span></div>`;
+    return `
+      <article
+        class="sortable-item"
+        draggable="true"
+        data-problem-id="${problem.id}"
+        ondragstart="handleDragStart(event)"
+        ondragover="handleDragOver(event)"
+        ondrop="handleDrop(event)"
+        ondragend="handleDragEnd(event)"
+      >
+        <div class="d-flex align-items-center gap-3">
+          <span class="rank-number">${index + 1}</span>
+          ${media}
+        </div>
+        <div>
+          <div class="fw-semibold mb-2">문제 번호 ${problem.problem_number}</div>
+          <div class="text-muted small mb-2">${problem.title || '제목 없이 등록된 문제입니다.'}</div>
+          <div class="text-muted small">캡처를 보고 난이도를 추리해 보세요.</div>
+        </div>
+        <div class="d-flex flex-column align-items-end gap-2">
+          <span class="badge text-bg-secondary">Drag</span>
+          <div class="d-flex gap-2">
+            <button class="btn btn-outline-secondary btn-sm" type="button" onclick="moveProblem(${index}, -1)" ${index === 0 ? 'disabled' : ''}>
+              <i class="bi bi-arrow-up"></i>
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" onclick="moveProblem(${index}, 1)" ${index === orderedProblemIds.length - 1 ? 'disabled' : ''}>
+              <i class="bi bi-arrow-down"></i>
+            </button>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function moveProblem(index, delta) {
+  const target = index + delta;
+  if (target < 0 || target >= orderedProblemIds.length) {
+    return;
+  }
+  [orderedProblemIds[index], orderedProblemIds[target]] = [orderedProblemIds[target], orderedProblemIds[index]];
+  isDirtyOrder = true;
+  renderProblems();
+}
+
+function handleDragStart(event) {
+  draggedProblemId = Number(event.currentTarget.dataset.problemId);
+  event.currentTarget.classList.add('dragging');
+}
+
+function handleDragOver(event) {
+  event.preventDefault();
+}
+
+function handleDrop(event) {
+  event.preventDefault();
+  const targetProblemId = Number(event.currentTarget.dataset.problemId);
+  if (!draggedProblemId || draggedProblemId === targetProblemId) {
+    return;
+  }
+  const nextOrder = [...orderedProblemIds];
+  const fromIndex = nextOrder.indexOf(draggedProblemId);
+  const toIndex = nextOrder.indexOf(targetProblemId);
+  nextOrder.splice(fromIndex, 1);
+  nextOrder.splice(toIndex, 0, draggedProblemId);
+  orderedProblemIds = nextOrder;
+  isDirtyOrder = true;
+  renderProblems();
+}
+
+function handleDragEnd(event) {
+  event.currentTarget.classList.remove('dragging');
+  draggedProblemId = null;
+}
+
+function buildSuccessEffect() {
+  const colors = ['#f4b942', '#2f6fb0', '#219653', '#e76f51', '#9b5de5'];
+  const confetti = Array.from({ length: 24 }, (_, index) => {
+    const left = 4 + index * 4;
+    const delay = (index % 6) * 0.12;
+    const color = colors[index % colors.length];
+    return `<span class="confetti-piece" style="left:${left}%; animation-delay:${delay}s; background:${color};"></span>`;
+  }).join('');
+  return `
+    <div class="position-relative">
+      ${confetti}
+      <div class="py-5">
+        <div class="display-4 fw-bold text-success mb-3">통과!</div>
+        <p class="lead mb-0">정확한 난이도 오름차순입니다.</p>
+      </div>
+    </div>
+  `;
+}
+
+function buildFailureEffect() {
+  return `
+    <div class="py-4">
+      <div class="display-4 fw-bold text-danger mb-3">실패!</div>
+      <p class="lead mb-4">정렬 순서가 맞지 않았습니다.</p>
+      <div class="soju-stage">
+        <div class="soju-glass left"></div>
+        <div class="soju-glass right"></div>
+        <div class="soju-spark"><i class="bi bi-stars"></i></div>
+      </div>
+    </div>
+  `;
+}
+
+function playTone(frequency, duration, type = 'sine', delay = 0) {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) {
+    return;
+  }
+  if (!audioContext) {
+    audioContext = new AudioCtx();
+  }
+  const context = audioContext;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = type;
+  oscillator.frequency.value = frequency;
+  gain.gain.value = 0.0001;
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  const start = context.currentTime + delay;
+  oscillator.start(start);
+  gain.gain.exponentialRampToValueAtTime(0.18, start + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+  oscillator.stop(start + duration + 0.02);
+}
+
+function playSuccessSound() {
+  [523.25, 659.25, 783.99, 1046.5].forEach((frequency, index) => {
+    playTone(frequency, 0.35, 'triangle', index * 0.12);
+  });
+}
+
+function playFailureSound() {
+  playTone(220, 0.35, 'sawtooth', 0);
+  playTone(196, 0.45, 'sawtooth', 0.12);
+}
+
+function showEffect(isCorrect) {
+  EFFECT_CONTENT.innerHTML = isCorrect ? buildSuccessEffect() : buildFailureEffect();
+  EFFECT_OVERLAY.classList.add('show');
+  if (isCorrect) {
+    playSuccessSound();
+  } else {
+    playFailureSound();
+  }
+}
+
+function hideEffect() {
+  EFFECT_OVERLAY.classList.remove('show');
+}
+
+async function loadCurrentRound() {
+  const previousRound = currentRound;
+  const response = await fetch('/api/v1/public/recreation/boj/current');
+  const data = await response.json();
+  const nextRound = data.current_round;
+  const roundChanged = !previousRound || !nextRound || previousRound.id !== nextRound.id;
+  currentRound = nextRound;
+  if (currentRound && roundChanged) {
+    orderedProblemIds = currentRound.problems.map(problem => problem.id);
+    isDirtyOrder = false;
+  } else if (currentRound && !isDirtyOrder) {
+    orderedProblemIds = currentRound.problems.map(problem => problem.id);
+  } else if (!currentRound) {
+    orderedProblemIds = [];
+    isDirtyOrder = false;
+  }
+  renderProblems();
+}
+
+async function submitOrder() {
+  if (!currentRound) {
+    return;
+  }
+  const response = await fetch('/api/v1/public/recreation/boj/submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ordered_problem_ids: orderedProblemIds }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    alert(error.detail || '판정에 실패했습니다.');
+    return;
+  }
+
+  const result = await response.json();
+  isDirtyOrder = false;
+  showEffect(result.is_correct);
+}
+
+SUBMIT_BTN.addEventListener('click', submitOrder);
+SHUFFLE_VIEW_BTN.addEventListener('click', () => {
+  if (!currentRound) {
+    return;
+  }
+  orderedProblemIds = currentRound.problems.map(problem => problem.id);
+  isDirtyOrder = false;
+  renderProblems();
+});
+
+loadCurrentRound();
+setInterval(loadCurrentRound, 5000);
+</script>
+{% endblock %}
