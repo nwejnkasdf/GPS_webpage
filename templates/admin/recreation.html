@@ -18,6 +18,7 @@
         <a class="btn btn-light" href="/recreation">행사 허브</a>
         <a class="btn btn-outline-light" href="/recreation/telepathy/display">텔레파시 현황판</a>
         <a class="btn btn-outline-light" href="/recreation/boj-tier">백준 게임 화면</a>
+        <a class="btn btn-warning" href="#boj-tab">BOJ 문제풀 등록</a>
       </div>
     </div>
   </div>
@@ -166,6 +167,17 @@
 <script>
 let telepathyState = null;
 let bojState = null;
+
+function activateAdminTabFromHash() {
+  if (!window.location.hash) {
+    return;
+  }
+  const trigger = document.querySelector(`[data-bs-target="${window.location.hash}"]`);
+  if (!trigger) {
+    return;
+  }
+  bootstrap.Tab.getOrCreateInstance(trigger).show();
+}
 
 async function requestJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -530,5 +542,7 @@ async function deleteBojProblem(problemId) {
 }
 
 loadAllStates();
+activateAdminTabFromHash();
+window.addEventListener('hashchange', activateAdminTabFromHash);
 </script>
 {% endblock %}
