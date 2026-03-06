@@ -6,43 +6,54 @@
 {% endblock %}
 
 {% block content %}
-<section class="card recreation-hero mb-4">
-  <div class="card-body p-4">
-    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
-      <div>
-        <span class="badge text-bg-light mb-2">노트북 게임</span>
-        <h1 class="h3 fw-bold mb-2">백준 티어 맞추기</h1>
-        <p class="mb-0 text-white-50">문제 캡처들을 난이도 오름차순으로 정렬한 뒤 제출하세요. 같은 난이도끼리는 순서가 바뀌어도 정답으로 처리됩니다.</p>
-      </div>
-      <div class="d-flex flex-wrap gap-2">
-        <a class="btn btn-light" href="/recreation">허브</a>
-        {% if is_admin %}
-        <a class="btn btn-outline-light" href="/admin/recreation">운영자 화면</a>
-        {% endif %}
+<div class="boj-stage">
+  <section class="card recreation-hero mb-4">
+    <div class="card-body p-4">
+      <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center">
+        <div>
+          <span class="badge text-bg-light mb-2">노트북 게임</span>
+          <h1 class="h3 fw-bold mb-2">백준 티어 맞추기</h1>
+          <p class="mb-0 text-white-50">
+            문제 캡처를 크게 펼쳐서 보고, 난이도 오름차순으로 정렬한 뒤 제출하세요.
+            같은 난이도끼리는 순서가 바뀌어도 정답으로 처리됩니다.
+          </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-light" href="/recreation">허브</a>
+          {% if is_admin %}
+          <a class="btn btn-outline-light" href="/admin/recreation">운영자 화면</a>
+          {% endif %}
+        </div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<section class="card board-card">
-  <div class="card-body">
-    <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center mb-3">
-      <div>
-        <h2 id="round-title" class="h4 fw-bold mb-1">라운드 대기 중</h2>
-        <p id="round-meta" class="text-muted mb-0">운영자가 라운드를 시작하면 문제가 표시됩니다.</p>
+  <section class="card board-card">
+    <div class="card-body">
+      <div class="d-flex flex-column flex-lg-row justify-content-between gap-3 align-items-lg-center mb-3">
+        <div>
+          <h2 id="round-title" class="h4 fw-bold mb-1">라운드 대기 중</h2>
+          <p id="round-meta" class="text-muted mb-0">운영자가 라운드를 시작하면 문제가 표시됩니다.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-outline-secondary" id="shuffle-view-btn" type="button">
+            <i class="bi bi-arrow-repeat me-1"></i>현재 순서 다시 보기
+          </button>
+          <button class="btn btn-success" id="submit-btn" type="button">
+            <i class="bi bi-check2-circle me-1"></i>제출하기
+          </button>
+        </div>
       </div>
-      <div class="d-flex flex-wrap gap-2">
-        <button class="btn btn-outline-secondary" id="shuffle-view-btn" type="button">
-          <i class="bi bi-arrow-repeat me-1"></i>현재 순서 다시 보기
-        </button>
-        <button class="btn btn-success" id="submit-btn" type="button">
-          <i class="bi bi-check2-circle me-1"></i>제출하기
-        </button>
-      </div>
+
+      <p class="text-muted small mb-3">
+        카드 전체를 드래그하거나 위아래 버튼으로 순서를 바꿀 수 있습니다.
+        캡처 이미지는 문제 설명, 시간 제한, 메모리 제한이 읽히도록 크게 표시됩니다.
+      </p>
+
+      <div id="boj-list" class="boj-sort-list boj-sort-list-wide"></div>
     </div>
-    <div id="boj-list" class="boj-sort-list"></div>
-  </div>
-</section>
+  </section>
+</div>
 
 <div id="effect-overlay" class="effect-overlay" role="dialog" aria-live="assertive" aria-modal="true">
   <div class="effect-panel">
@@ -87,11 +98,12 @@ function renderProblems() {
   BOJ_LIST.innerHTML = orderedProblemIds.map((problemId, index) => {
     const problem = problemMap[problemId];
     const media = problem.image_url
-      ? `<div class="boj-media"><img src="${problem.image_url}" alt="${problem.problem_number}"></div>`
-      : `<div class="boj-media"><span class="boj-placeholder"><i class="bi bi-card-image"></i></span></div>`;
+      ? `<div class="boj-media-wide"><img src="${problem.image_url}" alt="${problem.problem_number}"></div>`
+      : `<div class="boj-media-wide boj-media-wide-empty"><span class="boj-placeholder"><i class="bi bi-card-image"></i></span></div>`;
+
     return `
       <article
-        class="sortable-item"
+        class="sortable-item sortable-item-wide"
         draggable="true"
         data-problem-id="${problem.id}"
         ondragstart="handleDragStart(event)"
@@ -99,17 +111,18 @@ function renderProblems() {
         ondrop="handleDrop(event)"
         ondragend="handleDragEnd(event)"
       >
-        <div class="d-flex align-items-center gap-3">
-          <span class="rank-number">${index + 1}</span>
-          ${media}
-        </div>
-        <div>
-          <div class="fw-semibold mb-2">문제 번호 ${problem.problem_number}</div>
-          <div class="text-muted small mb-2">${problem.title || '제목 없이 등록된 문제입니다.'}</div>
-          <div class="text-muted small">캡처를 보고 난이도를 추리해 보세요.</div>
-        </div>
-        <div class="d-flex flex-column align-items-end gap-2">
-          <span class="badge text-bg-secondary">Drag</span>
+        <div class="sortable-item-wide__header">
+          <div class="sortable-item-wide__meta">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <span class="rank-number">${index + 1}</span>
+              <span class="badge text-bg-dark">문제 ${problem.problem_number}</span>
+              <span class="badge text-bg-secondary">Drag</span>
+            </div>
+            <div class="fw-semibold">${problem.title || '제목 없이 등록된 문제입니다.'}</div>
+            <div class="sortable-item-wide__hint">
+              캡처를 크게 보면서 문제 설명, 시간 제한, 메모리 제한까지 확인한 뒤 난이도를 추리하세요.
+            </div>
+          </div>
           <div class="d-flex gap-2">
             <button class="btn btn-outline-secondary btn-sm" type="button" onclick="moveProblem(${index}, -1)" ${index === 0 ? 'disabled' : ''}>
               <i class="bi bi-arrow-up"></i>
@@ -118,6 +131,10 @@ function renderProblems() {
               <i class="bi bi-arrow-down"></i>
             </button>
           </div>
+        </div>
+        ${media}
+        <div class="text-muted small">
+          페이지를 아래로 스크롤하면서 캡처를 끝까지 보고, 맞는 위치로 카드 순서를 바꾸면 됩니다.
         </div>
       </article>
     `;

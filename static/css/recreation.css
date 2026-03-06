@@ -55,6 +55,12 @@
   gap: 0.85rem;
 }
 
+.boj-stage {
+  width: min(96vw, 1600px);
+  margin-left: 50%;
+  transform: translateX(-50%);
+}
+
 .rank-item,
 .sortable-item {
   display: grid;
@@ -222,6 +228,60 @@
   opacity: 0.45;
 }
 
+.boj-sort-list-wide {
+  gap: 1.2rem;
+}
+
+.sortable-item-wide {
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 1rem;
+  padding: 1.2rem;
+}
+
+.sortable-item-wide__header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.85rem;
+  align-items: flex-start;
+}
+
+.sortable-item-wide__meta {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.sortable-item-wide__hint {
+  color: #6c757d;
+  font-size: 0.92rem;
+}
+
+.boj-media-wide {
+  width: 100%;
+  border-radius: 1rem;
+  overflow: hidden;
+  border: 1px solid rgba(22, 50, 79, 0.08);
+  background: linear-gradient(180deg, rgba(47, 111, 176, 0.08), rgba(255, 255, 255, 0.95));
+  padding: 0.75rem;
+}
+
+.boj-media-wide img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  object-position: top center;
+  border-radius: 0.7rem;
+}
+
+.boj-media-wide-empty {
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .effect-overlay {
   position: fixed;
   inset: 0;
@@ -379,5 +439,17 @@
 
   .soju-glass.right {
     right: calc(50% - 96px);
+  }
+}
+
+@media (max-width: 991px) {
+  .boj-stage {
+    width: 100%;
+    margin-left: 0;
+    transform: none;
+  }
+
+  .sortable-item-wide__header {
+    flex-direction: column;
   }
 }
